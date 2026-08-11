@@ -1,0 +1,64 @@
+# Negative fixture for scripts/checks/registry-schema.sh.
+#
+# Every entry here violates at least one rule from manifests/schema.md. The
+# self-test asserts that the validator rejects this file — a validator that
+# only ever sees valid input is not known to work.
+#
+# Not a real registry. Never referenced by any install path.
+
+# Violates: id not kebab-case, invalid category, level out of range, empty why,
+# malformed added/reviewed dates, sunset set on an active entry, replaced_by
+# pointing at an id that does not exist in this document.
+- id: Bad_ID
+  name: Broken entry
+  category: nonsense
+  source: brew
+  ref: bad
+  level: 9
+  status: active
+  version_seen: ""
+  version_check: brew
+  check_ref: ""
+  why: ""
+  added: 2026-13-45
+  reviewed: not-a-date
+  sunset: 2026-01-01
+  replaced_by: does-not-exist
+
+# Violates: nearly every required field is missing.
+- id: missing-fields
+  name: Incomplete entry
+
+# Violates: deprecated status without the required sunset date.
+- id: deprecated-without-sunset
+  name: Deprecated entry with no sunset date
+  category: shell
+  source: brew
+  ref: example
+  level: 3
+  status: deprecated
+  version_seen: "1.0.0"
+  version_check: brew
+  check_ref: example
+  why: Fixture for the missing-sunset rule
+  added: 2026-01-01
+  reviewed: 2026-01-01
+  sunset: null
+  replaced_by: null
+
+# Violates: duplicate id (collides with the entry above).
+- id: deprecated-without-sunset
+  name: Duplicate id
+  category: shell
+  source: brew
+  ref: example2
+  level: 3
+  status: active
+  version_seen: ""
+  version_check: manual
+  check_ref: ""
+  why: Fixture for the uniqueness rule
+  added: 2026-01-01
+  reviewed: 2026-01-01
+  sunset: null
+  replaced_by: null

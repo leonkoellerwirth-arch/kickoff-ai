@@ -35,21 +35,30 @@ When you change a tool entry or a script, update the relevant `docs/` file in th
 
 ## How to test locally what CI tests
 
+CI runs no check logic of its own. `validate.yml` calls `scripts/gate.sh`, which
+calls the scripts in `scripts/checks/` — so running the gate locally runs
+*exactly* what CI runs, not an approximation of it.
+
 ```bash
-# Syntax check (bash -n):
-bash -n scripts/07-ai-stack.sh
+# Everything CI checks, in the same order, with one verdict at the end:
+./scripts/gate.sh
 
-# ShellCheck:
-shellcheck scripts/07-ai-stack.sh
+# What that consists of:
+./scripts/gate.sh --list
 
-# Registry consistency:
-automation/bin/up2date --consistency --offline
+# A single check in isolation (each one is a standalone executable):
+./scripts/checks/sanitize.sh
+./scripts/checks/sanitize.sh --list      # which files are in scope
+./scripts/checks/registry-schema.sh
 
-# Sanitization scan (requires the CI environment variables or local setup):
-bash .github/sanitize-check.sh   # if it exists locally
+# Proof that the gate still blocks — runs it against a deliberately broken
+# copy of the tree and asserts it fails:
+./scripts/checks/self-test.sh
 ```
 
-The CI workflow `validate.yml` runs all three on every push and PR.
+Every check exits `0` (pass), `1` (violation) or `2` (cannot run — a required
+tool is missing). Exit 2 fails the gate: a check that cannot run has not passed.
+Install the declared dependencies with `brew install shellcheck yq jq gitleaks`.
 
 ## Sanitization rules
 

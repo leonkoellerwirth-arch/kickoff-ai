@@ -58,8 +58,24 @@ allowlist (`.github/sanitize-allowlist.txt`).
 
 ## How the Scan Works
 
-The `validate` workflow (`.github/workflows/validate.yml`, step "Sanitisierungs-Scan")
-checks all text files in the repository using a two-tier system:
+`scripts/checks/sanitize.sh` — run locally via `./scripts/gate.sh` and in CI by
+`.github/workflows/validate.yml`, which calls the very same script — checks
+**every tracked text file** using a two-tier system.
+
+"Every tracked text file" is meant literally: the file list comes from
+`git grep -I --name-only -z` (git's own binary detection), not from a list of
+file extensions. An extension allowlist was in use until 2026-08-11 and silently
+skipped `config/gitconfig`, every extension-less CLI in `automation/bin/`, the
+LaunchAgent plists and `templates/vaultwarden/.env.example` — exactly the files
+most likely to carry a token, a URL or a personal path. Check the scope yourself:
+
+```bash
+./scripts/checks/sanitize.sh --list
+```
+
+Untracked files and `local/` are deliberately out of scope: `local/` is
+gitignored and holds the unsanitized inventory by design, and a file that is not
+tracked cannot be published by a push.
 
 ### Denylist
 

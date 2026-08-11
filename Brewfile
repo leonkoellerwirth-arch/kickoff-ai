@@ -30,6 +30,7 @@ brew "watch"                # Run command periodically
 brew "wget"                 # HTTP downloader
 brew "ripgrep"              # Fast grep (rg)
 brew "jq"                   # JSON processing
+brew "yq"                   # YAML processing — required by scripts/checks/
 brew "shellcheck"           # Shell script linter
 
 # =============================================================================
