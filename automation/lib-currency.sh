@@ -219,15 +219,32 @@ fetch_version_brew() {
     fi
     local json version deprecated disabled
     json=$(brew info --json=v2 "$ref" 2>/dev/null) || { printf 'unknown'; return 0; }
-    version=$(printf '%s' "$json" | jq -r '.formulae[0].versions.stable // empty' 2>/dev/null \
-              || printf '%s' "$json" | jq -r '.casks[0].version // empty' 2>/dev/null \
-              || echo "")
-    deprecated=$(printf '%s' "$json" | jq -r '.formulae[0].deprecated // false' 2>/dev/null || echo "false")
-    disabled=$(printf '%s' "$json" | jq -r '.formulae[0].disabled // false' 2>/dev/null || echo "false")
+
+    # One expression, not two chained with ||. `jq '.formulae[0]...'` on a cask
+    # returns EMPTY with exit 0 — it succeeded, it just found nothing — so the
+    # `||` fallback never ran and every cask reported "unknown". brew info
+    # returns both arrays, exactly one of which is populated, so ask for both
+    # and take the first non-empty.
+    version=$(printf '%s' "$json" |
+        jq -r 'first((.formulae[0].versions.stable // empty),
+                     (.casks[0].version // empty)) // empty' 2>/dev/null || echo "")
+
+    # Deprecation flags likewise exist on both shapes — a deprecated cask was
+    # invisible for the same reason the version was.
+    deprecated=$(printf '%s' "$json" |
+        jq -r 'first((.formulae[0].deprecated // empty),
+                     (.casks[0].deprecated // empty)) // false' 2>/dev/null || echo "false")
+    disabled=$(printf '%s' "$json" |
+        jq -r 'first((.formulae[0].disabled // empty),
+                     (.casks[0].disabled // empty)) // false' 2>/dev/null || echo "false")
 
     if [ "$deprecated" = "true" ] || [ "$disabled" = "true" ]; then
         local reason
-        reason=$(printf '%s' "$json" | jq -r '.formulae[0].deprecation_reason // .formulae[0].disable_reason // "unknown"' 2>/dev/null || echo "unknown")
+        reason=$(printf '%s' "$json" |
+            jq -r 'first((.formulae[0].deprecation_reason // empty),
+                         (.formulae[0].disable_reason // empty),
+                         (.casks[0].deprecation_reason // empty),
+                         (.casks[0].disable_reason // empty)) // "unknown"' 2>/dev/null || echo "unknown")
         # Sunset signal via special comment on stderr
         printf 'SUNSET_SIGNAL:%s' "$reason" >&2
     fi
