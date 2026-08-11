@@ -50,7 +50,19 @@ jobs:
         run: |
           fail=0
 
-          # .sh files
+          # Collect every bash file once: .sh files plus the extension-less
+          # commands in automation/bin/ (detected by shebang).
+          # A file list is used instead of a heredoc on purpose — a heredoc
+          # delimiter inside an indented YAML block is easy to break.
+          find . -name "*.sh" -not -path "./.git/*" -not -path "./local/*" > /tmp/shfiles.txt
+          if [ -d automation/bin ]; then
+            find automation/bin -maxdepth 1 -type f | while IFS= read -r f; do
+              head -1 "$f" | grep -q '#!/.*bash' && echo "$f"
+            done >> /tmp/shfiles.txt
+          fi
+
+          echo "Checking $(wc -l < /tmp/shfiles.txt | tr -d ' ') shell files"
+
           while IFS= read -r f; do
             [ -z "$f" ] && continue
             if ! bash -n "$f" 2>/tmp/bash_n_err; then
@@ -58,25 +70,7 @@ jobs:
               cat /tmp/bash_n_err
               fail=1
             fi
-          done <<EOFLIST
-          $(find . -name "*.sh" -not -path "./.git/*" -not -path "./local/*")
-          EOFLIST
-
-          # Extension-less scripts in automation/bin/ (shebang detection)
-          if [ -d automation/bin ]; then
-            while IFS= read -r f; do
-              [ -z "$f" ] && continue
-              if head -1 "$f" | grep -q '#!/.*bash'; then
-                if ! bash -n "$f" 2>/tmp/bash_n_err; then
-                  echo "ERROR bash -n: $f"
-                  cat /tmp/bash_n_err
-                  fail=1
-                fi
-              fi
-            done <<EOFLIST
-            $(find automation/bin -maxdepth 1 -type f)
-            EOFLIST
-          fi
+          done < /tmp/shfiles.txt
 
           exit "$fail"
 
@@ -87,29 +81,23 @@ jobs:
         run: |
           fail=0
 
-          # .sh files
+          # Reuses the file list built by the previous step; rebuild it if the
+          # step is run in isolation.
+          if [ ! -s /tmp/shfiles.txt ]; then
+            find . -name "*.sh" -not -path "./.git/*" -not -path "./local/*" > /tmp/shfiles.txt
+            if [ -d automation/bin ]; then
+              find automation/bin -maxdepth 1 -type f | while IFS= read -r f; do
+                head -1 "$f" | grep -q '#!/.*bash' && echo "$f"
+              done >> /tmp/shfiles.txt
+            fi
+          fi
+
           while IFS= read -r f; do
             [ -z "$f" ] && continue
             if ! shellcheck -S warning "$f"; then
               fail=1
             fi
-          done <<EOFLIST
-          $(find . -name "*.sh" -not -path "./.git/*" -not -path "./local/*")
-          EOFLIST
-
-          # Extension-less scripts in automation/bin/
-          if [ -d automation/bin ]; then
-            while IFS= read -r f; do
-              [ -z "$f" ] && continue
-              if head -1 "$f" | grep -q '#!/.*bash'; then
-                if ! shellcheck -S warning "$f"; then
-                  fail=1
-                fi
-              fi
-            done <<EOFLIST
-            $(find automation/bin -maxdepth 1 -type f)
-            EOFLIST
-          fi
+          done < /tmp/shfiles.txt
 
           exit "$fail"
 
@@ -120,15 +108,14 @@ jobs:
         run: |
           if [ -d automation/launchd ]; then
             fail=0
+            find automation/launchd -name "*.plist" > /tmp/plists.txt 2>/dev/null || true
             while IFS= read -r f; do
               [ -z "$f" ] && continue
               if ! plutil -lint "$f"; then
                 echo "ERROR plutil: $f"
                 fail=1
               fi
-            done <<EOFLIST
-            $(find automation/launchd -name "*.plist" 2>/dev/null || true)
-            EOFLIST
+            done < /tmp/plists.txt
             exit "$fail"
           else
             echo "No automation/launchd directory — skipping plutil lint"
