@@ -5,7 +5,7 @@
 > Ziel: Du stehst vor einem frisch ausgepackten Mac und willst am Ende exakt diese Arbeitsumgebung haben.
 > Lese diesen Guide von oben nach unten. Jede Phase hat ein klares Ziel, einen automatischen Teil (Skript) und einen manuellen Rest (Checkliste).
 
-**Eilig?** Dann nimm stattdessen [QUICKSTART.md](../QUICKSTART.md) — vier kumulative Stufen, eine Seite, keine Prosa. Komm hierher zurück wenn du die Hintergründe oder Fehlerbehebung brauchst.
+**Eilig?** Dann nimm stattdessen [QUICKSTART.md](../../QUICKSTART.md) — vier kumulative Stufen, eine Seite, keine Prosa. Komm hierher zurück wenn du die Hintergründe oder Fehlerbehebung brauchst.
 
 Für eine vollständige Checkliste der manuellen Schritte: [01-MANUELL.md](01-MANUELL.md).
 Für die Begründungen hinter den Tool-Entscheidungen: [04-ENTSCHEIDUNGEN.md](04-ENTSCHEIDUNGEN.md).
