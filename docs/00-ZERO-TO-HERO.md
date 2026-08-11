@@ -260,20 +260,31 @@ echo $PROMPT   # p10k prompt or configuration wizard starts
 
 ### What Runs Automatically
 
+> **Never use `git config --global` on a machine set up this way.** `~/.gitconfig`
+> is a symlink to the tracked `config/gitconfig` in this repo, and git resolves
+> that symlink before writing — so `--global` edits a *tracked file* and the next
+> commit publishes your name, email and local paths. Write to
+> `~/.gitconfig.local` instead; it is included by the template and never tracked.
+> `doctor.sh` check 31 tells you if the template has been modified.
+
 ```bash
-# Apply git configuration from config/gitconfig
-git config --global include.path ~/dev/kickoff-ai/config/gitconfig
+# Apply git configuration: ~/.gitconfig is symlinked to the tracked template
+ln -sf ~/dev/kickoff-ai/config/gitconfig ~/.gitconfig
 
 # Generate a new ed25519 key
 ssh-keygen -t ed25519 -C "<your@email.com>" -f ~/.ssh/id_ed25519
 
+# Identity and anything machine-specific → ~/.gitconfig.local
+git config --file ~/.gitconfig.local user.name "<Your Name>"
+git config --file ~/.gitconfig.local user.email "<your@email.com>"
+
 # Enable SSH commit signing
-git config --global gpg.format ssh
-git config --global user.signingkey ~/.ssh/id_ed25519.pub
-git config --global commit.gpgsign true
+git config --file ~/.gitconfig.local gpg.format ssh
+git config --file ~/.gitconfig.local user.signingkey ~/.ssh/id_ed25519.pub
+git config --file ~/.gitconfig.local commit.gpgsign true
 
 # Register core.excludesfile
-git config --global core.excludesfile ~/.gitignore_global
+git config --file ~/.gitconfig.local core.excludesfile ~/.gitignore_global
 
 # Install pre-commit in dev/base
 cd ~/dev/base && pre-commit install --install-hooks
@@ -314,9 +325,10 @@ RSA-2048 is secure, but ed25519 is smaller (shorter keys, faster signing), suppo
 ### Verification
 
 ```bash
-git config --global core.excludesfile   # ~/.gitignore_global
-git config --global gpg.format         # ssh
-git config --global commit.gpgsign     # true
+git config --get core.excludesfile      # ~/.gitignore_global
+git config --get gpg.format            # ssh
+git config --get commit.gpgsign        # true
+git -C ~/dev/kickoff-ai diff --quiet config/gitconfig && echo "template clean"
 ssh -T github-primary                   # Hi <username>!
 ssh -T github-secondary                 # Hi <second-username>!
 pre-commit --version                    # present

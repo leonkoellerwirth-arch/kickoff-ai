@@ -156,7 +156,7 @@ cd ~/dev/kickoff-ai
 ./doctor.sh
 ```
 
-Doctor checks ~41 points and reports PASS / WARN / FAIL.
+Doctor checks ~42 points and reports PASS / WARN / FAIL.
 Fix all FAILs, then proceed.
 
 ### 2. Migration Diff
