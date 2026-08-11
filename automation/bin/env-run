@@ -59,8 +59,17 @@ check_bw_session() {
         exit 1
     fi
 
+    # Exported, never passed as an argument. bw picks BW_SESSION up from the
+    # environment; `--session "$value"` would place the decrypted vault key —
+    # the most valuable capability in this whole flow — into the process
+    # argument list, where any local process can read it with ps. The rest of
+    # env-run is careful to keep resolved values out of argv; the session key
+    # was the one thing that still leaked, and docs/08-SECRETS.md classifies it
+    # as "equivalent to a vault key".
+    export BW_SESSION
+
     local status
-    status=$(bw status --session "$BW_SESSION" 2>/dev/null | jq -r '.status // empty' 2>/dev/null || true)
+    status=$(bw status 2>/dev/null | jq -r '.status // empty' 2>/dev/null || true)
     case "${status:-}" in
         unlocked)
             return 0
@@ -91,12 +100,12 @@ bw_get_field() {
 
     case "$field" in
         password|username|notes|totp)
-            value=$(bw get "$field" "$item" --session "$BW_SESSION" 2>/dev/null) || true
+            value=$(bw get "$field" "$item" 2>/dev/null) || true
             ;;
         *)
             # Custom field — fetch item, filter with jq
             local item_json
-            item_json=$(bw get item "$item" --session "$BW_SESSION" 2>/dev/null) || true
+            item_json=$(bw get item "$item" 2>/dev/null) || true
             if [ -n "$item_json" ]; then
                 value=$(printf '%s' "$item_json" | \
                     jq -r --arg f "$field" \
@@ -129,8 +138,9 @@ _start_bw_serve() {
         warn "curl not found — --serve not available, using bw get directly."
         return 1
     fi
-    bw serve --hostname 127.0.0.1 --port "$BW_SERVE_PORT" \
-        --session "$BW_SESSION" >/dev/null 2>&1 &
+    # Same reason, and worse here: bw serve is long-lived, so the argument
+    # would sit in ps for the whole run rather than for one short call.
+    bw serve --hostname 127.0.0.1 --port "$BW_SERVE_PORT" >/dev/null 2>&1 &
     BW_SERVE_PID=$!
     # Wait briefly until the service is up
     local i=0

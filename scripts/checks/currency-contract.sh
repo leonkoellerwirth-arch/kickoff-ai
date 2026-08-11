@@ -127,7 +127,10 @@ assert_eq "an index loop over 0 items yields nothing" "$idx_zero" "0"
 assert_eq "BSD seq 0 -1 really does emit 2 lines" "$(seq 0 -1 2>/dev/null | wc -l | tr -d ' ')" "2"
 
 # --- 4. no bare `seq 0 $((n - 1))` remains ----------------------------------
-if seq_hits="$(git grep -nE 'seq 0 \$\(\(' -- automation/ scripts/ bootstrap.sh doctor.sh 2>/dev/null)" \
+# This file names the forbidden pattern in order to check for it, so it is
+# excluded — same reason customer-names.sh excludes itself.
+if seq_hits="$(git grep -nE 'seq 0 \$\(\(' -- automation/ scripts/ bootstrap.sh doctor.sh \
+    ':(exclude)scripts/checks/currency-contract.sh' 2>/dev/null)" \
     && [ -n "$seq_hits" ]; then
     assert_ok no "a countdown-prone \`seq 0 \$((n - 1))\` is back:
 $seq_hits"

@@ -298,6 +298,19 @@ into a sub-shell via shell `export`. The target command replaces the sub-shell v
 `exec`. Secrets therefore appear exclusively in the process environment — not in `ps`
 output, not in temporary files.
 
+That applies to the session token as well. `BW_SESSION` is exported into the
+environment and never passed as `bw --session <value>`: command-line arguments are
+world-readable through `ps`, and until 2026-08-11 every `bw` call in `env-run` —
+including the long-lived `bw serve` in `--serve` mode — put the decrypted vault key
+there. The environment is inherited by `bw` exactly the same way, with none of the
+exposure.
+
+Verify it yourself while a command is running:
+
+```bash
+ps -Ewwo args | grep -c -- '--session'   # expected: 0
+```
+
 ### 6.2 Template Format
 
 The template (`.env.template`) is a line-based file that can be checked into the repo —
