@@ -262,20 +262,36 @@ echo $PROMPT   # p10k-Prompt oder Konfigurationsassistent startet
 
 ### Was automatisch läuft
 
+> **Niemals `git config --global` auf einer so eingerichteten Maschine.**
+> `~/.gitconfig` ist ein Symlink auf die versionierte `config/gitconfig`, und git
+> löst diesen Symlink vor dem Schreiben auf — `--global` verändert also eine
+> **versionierte Datei**, und der nächste Commit veröffentlicht Name, E-Mail und
+> lokale Pfade. Stattdessen nach `~/.gitconfig.local` schreiben; diese Datei wird
+> von der Vorlage eingebunden und nie versioniert. `doctor.sh` Check 31 meldet,
+> wenn die Vorlage verändert wurde.
+>
+> *(Dieses Archiv wird ansonsten nicht mit der englischen Fassung synchron
+> gehalten — siehe BIBLE.md. Diese Stelle wurde korrigiert, weil sie einen
+> aktiven Schaden anrichtet, nicht nur veraltet ist.)*
+
 ```bash
-# git-Konfiguration aus config/gitconfig übernehmen
-git config --global include.path ~/dev/kickoff-ai/config/gitconfig
+# git-Konfiguration: ~/.gitconfig wird auf die Vorlage gesymlinkt
+ln -sf ~/dev/kickoff-ai/config/gitconfig ~/.gitconfig
 
 # Neuen ed25519-Key generieren
 ssh-keygen -t ed25519 -C "<deine@email.com>" -f ~/.ssh/id_ed25519
 
+# Identität und alles Maschinenspezifische → ~/.gitconfig.local
+git config --file ~/.gitconfig.local user.name "<Dein Name>"
+git config --file ~/.gitconfig.local user.email "<deine@email.com>"
+
 # SSH-Commit-Signierung aktivieren
-git config --global gpg.format ssh
-git config --global user.signingkey ~/.ssh/id_ed25519.pub
-git config --global commit.gpgsign true
+git config --file ~/.gitconfig.local gpg.format ssh
+git config --file ~/.gitconfig.local user.signingkey ~/.ssh/id_ed25519.pub
+git config --file ~/.gitconfig.local commit.gpgsign true
 
 # core.excludesfile registrieren
-git config --global core.excludesfile ~/.gitignore_global
+git config --file ~/.gitconfig.local core.excludesfile ~/.gitignore_global
 
 # pre-commit in dev/base installieren
 cd ~/dev/base && pre-commit install --install-hooks
@@ -316,9 +332,10 @@ RSA-2048 ist sicher, aber ed25519 ist kleiner (kürzere Schlüssel, schnellere S
 ### Verifikation
 
 ```bash
-git config --global core.excludesfile   # ~/.gitignore_global
-git config --global gpg.format         # ssh
-git config --global commit.gpgsign     # true
+git config --get core.excludesfile      # ~/.gitignore_global
+git config --get gpg.format            # ssh
+git config --get commit.gpgsign        # true
+git -C ~/dev/kickoff-ai diff --quiet config/gitconfig && echo "Vorlage sauber"
 ssh -T github-primary                   # Hi <username>!
 ssh -T github-secondary                 # Hi <zweiter-username>!
 pre-commit --version                    # vorhanden

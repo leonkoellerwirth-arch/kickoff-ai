@@ -56,6 +56,7 @@ yaml-parse.sh
 workflow-run-blocks.sh
 registry-schema.sh
 registry-consistency.sh
+gitconfig-isolation.sh
 markdown-links.sh
 sanitize.sh
 secrets.sh

@@ -22,7 +22,7 @@ Most setup repos have no answer for this. They are documentation, not systems.
 | Pillar | What it does | Numbers |
 |--------|-------------|---------|
 | **Staged installation** | One command, four cumulative levels: emergency shell in 15 min, full AI stack in 2 h | 12 modules, `--dry-run` on everything |
-| **Verification** | `doctor.sh` checks every layer of the stack after setup | 41 checks, PASS / WARN / FAIL |
+| **Verification** | `doctor.sh` checks every layer of the stack after setup | 42 checks, PASS / WARN / FAIL |
 | **Currency system** | A registry of 102 tools is the single source of truth; CI opens a PR for version drift and an issue for rot every Monday | `candidate → active → deprecated → sunset`, 90-day sunset window |
 | **Migration** | `status-quo.sh` exports the old machine; `migration-diff` shows what the new one is still missing | Machine-readable `profile.json`, concrete commands for every gap |
 
@@ -85,7 +85,7 @@ Note: Each level includes all modules from previous levels (cumulative).
       Re-running a level that was already completed is safe.
 ```
 
-After a full setup, `doctor.sh` runs 41 checks and prints a structured result. This is real output from the AI-tools section:
+After a full setup, `doctor.sh` runs 42 checks and prints a structured result. This is real output from the AI-tools section:
 
 ```
 ==> AI Tools
@@ -100,7 +100,7 @@ After a full setup, `doctor.sh` runs 41 checks and prints a structured result. T
   PASS: 29
   WARN: 10
   FAIL: 2
-     Checked: 41 / 41
+     Checked: 42 / 42
 ```
 
 WARN and FAIL entries each include a concrete fix command. FAILs block the setup as complete.
@@ -112,7 +112,7 @@ WARN and FAIL entries each include a concrete fix command. FAILs block the setup
 ```
 prepare.sh              Entry point for bare machines — no git or Homebrew needed
 bootstrap.sh            Orchestrator — runs modules in order, levels 0–3
-doctor.sh               Read-only check — 41 points, PASS/WARN/FAIL, exit 1 on FAIL
+doctor.sh               Read-only check — 42 points, PASS/WARN/FAIL, exit 1 on FAIL
 status-quo.sh           Export the current machine state before migration
 
 scripts/

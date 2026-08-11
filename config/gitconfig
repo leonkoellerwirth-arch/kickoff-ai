@@ -1,10 +1,18 @@
 # =============================================================================
 # ~/.gitconfig — Git configuration
 #
-# Contains ONLY machine-independent settings.
-# Personal data (user.name, user.email, SSH signing) are set via
-# module 08 (08-git-ssh.sh) directly and optionally overridden in
-# ~/.gitconfig.local.
+# THIS FILE IS A TRACKED TEMPLATE. ~/.gitconfig is a symlink to it, and git
+# resolves that symlink before taking its lockfile — so `git config --global`
+# writes straight through the link into this file, inside the repository, and
+# the next commit publishes whatever it wrote. Nothing in the setup may write
+# here. Treat it as read-only:
+#
+#   git config --file ~/.gitconfig.local user.email "you@example.com"   # correct
+#   git config --global user.email "you@example.com"                    # WRONG
+#
+# Machine-independent settings only. Identity, absolute paths and anything else
+# specific to one machine live in ~/.gitconfig.local, which is included at the
+# bottom of this file and is never tracked.
 # =============================================================================
 
 # =============================================================================
@@ -151,8 +159,9 @@
 # =============================================================================
 
 # =============================================================================
-# Machine-specific overrides (user.name, user.email, signing)
-# ~/.gitconfig.local is populated by module 08 (git config --global).
+# Machine-specific overrides (user.name, user.email, signing, absolute paths)
+# Written by module 08 via `git config --file ~/.gitconfig.local`, never with
+# --global. A missing file is not an error — git ignores an absent include.
 # =============================================================================
 [include]
     path = ~/.gitconfig.local

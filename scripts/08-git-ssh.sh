@@ -5,9 +5,11 @@
 # Purpose:  Apply Git configuration, generate a new ed25519 SSH key,
 #           configure SSH agent + Keychain, check gh auth,
 #           set up pre-commit (via uv) and a global gitleaks hook.
-# Changes:  ~/.gitconfig, ~/.gitignore_global, ~/.ssh/config,
-#           ~/.ssh/id_ed25519 (new), ~/.config/git/allowed_signers,
-#           git global config, uv tool install pre-commit
+# Changes:  ~/.gitconfig (symlink to the tracked template), ~/.gitconfig.local
+#           (identity and all machine-local paths), ~/.gitignore_global,
+#           ~/.ssh/config, ~/.ssh/id_ed25519 (new),
+#           ~/.config/git/allowed_signers, uv tool install pre-commit
+#           Never the tracked config/gitconfig — see the identity section.
 # Requires: Homebrew (module 02), Python/uv (module 05)
 # Usage:    ./scripts/08-git-ssh.sh [--dry-run] [--yes]
 #           Environment variables for --yes mode:
@@ -65,11 +67,38 @@ fi
 
 # =============================================================================
 # git user.name / user.email — interactive or via env vars
+#
+# CRITICAL: identity and machine-local paths are written to ~/.gitconfig.local,
+# NEVER with `git config --global`.
+#
+# ~/.gitconfig is a symlink to this repo's tracked config/gitconfig. git
+# resolves symlinks before taking its lockfile, so `git config --global` writes
+# straight through the link INTO THE TRACKED FILE. After a normal documented
+# setup, the next commit in this repo would publish the operator's name, email
+# and absolute local paths — in a public repo, and in direct violation of INV-3.
+# config/gitconfig is a template and must stay byte-identical after setup;
+# scripts/checks/gitconfig-isolation.sh asserts exactly that.
 # =============================================================================
-info "Configuring Git identity..."
+LOCAL_GITCONFIG="$HOME/.gitconfig.local"
 
-CURRENT_NAME=$(git config --global user.name 2>/dev/null || echo "")
-CURRENT_EMAIL=$(git config --global user.email 2>/dev/null || echo "")
+git_local_config() {
+    run git config --file "$LOCAL_GITCONFIG" "$1" "$2"
+}
+
+# Reads go to the local file first, then fall back to whatever git already
+# resolves. Deliberately not `git config --global`: that form appears nowhere
+# in this repo any more, so the rule "no --global writes" is greppable and is
+# enforced by scripts/checks/gitconfig-isolation.sh.
+git_read_config() {
+    git config --file "$LOCAL_GITCONFIG" --get "$1" 2>/dev/null \
+        || git config --get "$1" 2>/dev/null \
+        || echo ""
+}
+
+info "Configuring Git identity (→ ~/.gitconfig.local)..."
+
+CURRENT_NAME=$(git_read_config user.name)
+CURRENT_EMAIL=$(git_read_config user.email)
 
 if [ -n "${GIT_AUTHOR_NAME:-}" ]; then
     GIT_NAME="$GIT_AUTHOR_NAME"
@@ -104,12 +133,12 @@ else
 fi
 
 if [ -n "$GIT_NAME" ]; then
-    run git config --global user.name "$GIT_NAME"
-    ok "git user.name = $GIT_NAME"
+    git_local_config user.name "$GIT_NAME"
+    ok "git user.name = $GIT_NAME (in ~/.gitconfig.local)"
 fi
 if [ -n "$GIT_EMAIL" ]; then
-    run git config --global user.email "$GIT_EMAIL"
-    ok "git user.email = $GIT_EMAIL"
+    git_local_config user.email "$GIT_EMAIL"
+    ok "git user.email = $GIT_EMAIL (in ~/.gitconfig.local)"
 fi
 
 # =============================================================================
@@ -124,7 +153,9 @@ if [ -e "$TARGET_GITIGNORE" ] && [ ! -L "$TARGET_GITIGNORE" ]; then
     backup_file "$TARGET_GITIGNORE"
 fi
 run ln -sf "$CONFIG_GITIGNORE" "$TARGET_GITIGNORE"
-run git config --global core.excludesfile "$TARGET_GITIGNORE"
+# Absolute path containing $HOME → machine-local, so it belongs in the local
+# file, not in the tracked template.
+git_local_config core.excludesfile "$TARGET_GITIGNORE"
 ok "$HOME/.gitignore_global set up"
 
 # =============================================================================
@@ -312,8 +343,9 @@ HOOK
             info "[dry-run] Would create global gitleaks hook: $GITLEAKS_HOOK"
         fi
 
-        # Point git to the global hooks directory
-        run git config --global core.hooksPath "$GLOBAL_HOOKS_DIR"
+        # Point git to the global hooks directory — again an absolute local
+        # path, so it goes to ~/.gitconfig.local.
+        git_local_config core.hooksPath "$GLOBAL_HOOKS_DIR"
         ok "git core.hooksPath = $GLOBAL_HOOKS_DIR"
     fi
 else

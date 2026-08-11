@@ -411,21 +411,21 @@ step "Git / SSH / Security"
 # =============================================================================
 # 22. git user.name
 # =============================================================================
-GIT_NAME=$(git config --global user.name 2>/dev/null || echo "")
+GIT_NAME=$(git config --get user.name 2>/dev/null || echo "")
 if [ -n "$GIT_NAME" ]; then
     pass0 "git user.name" "$GIT_NAME"
 else
-    fail0 "git user.name" "Not set" "git config --global user.name 'Your Name'"
+    fail0 "git user.name" "Not set" "git config --file ~/.gitconfig.local user.name 'Your Name'"
 fi
 
 # =============================================================================
 # 23. git user.email
 # =============================================================================
-GIT_EMAIL=$(git config --global user.email 2>/dev/null || echo "")
+GIT_EMAIL=$(git config --get user.email 2>/dev/null || echo "")
 if [ -n "$GIT_EMAIL" ]; then
     pass0 "git user.email" "$GIT_EMAIL"
 else
-    fail0 "git user.email" "Not set" "git config --global user.email 'you@example.com'"
+    fail0 "git user.email" "Not set" "git config --file ~/.gitconfig.local user.email 'you@example.com'"
 fi
 
 # =============================================================================
@@ -459,17 +459,17 @@ fi
 # =============================================================================
 # 26. git init.defaultBranch
 # =============================================================================
-DEFAULT_BRANCH=$(git config --global init.defaultBranch 2>/dev/null || echo "master")
+DEFAULT_BRANCH=$(git config --get init.defaultBranch 2>/dev/null || echo "master")
 if [ "$DEFAULT_BRANCH" = "main" ]; then
     pass0 "git defaultBranch" "main"
 else
-    warn0 "git defaultBranch" "$DEFAULT_BRANCH" "git config --global init.defaultBranch main"
+    warn0 "git defaultBranch" "$DEFAULT_BRANCH" "git config --file ~/.gitconfig.local init.defaultBranch main"
 fi
 
 # =============================================================================
 # 27. git core.excludesfile
 # =============================================================================
-EXCLUDES=$(git config --global core.excludesfile 2>/dev/null || echo "")
+EXCLUDES=$(git config --get core.excludesfile 2>/dev/null || echo "")
 if [ -n "$EXCLUDES" ] && [ -f "$EXCLUDES" ]; then
     pass0 "git excludesfile" "$EXCLUDES"
 else
@@ -500,17 +500,34 @@ fi
 # 30. Global gitleaks pre-commit hook
 # =============================================================================
 GLOBAL_HOOK="$HOME/.config/git/hooks/pre-commit"
-HOOKS_PATH=$(git config --global core.hooksPath 2>/dev/null || echo "")
+HOOKS_PATH=$(git config --get core.hooksPath 2>/dev/null || echo "")
 if [ -f "$GLOBAL_HOOK" ] && [ -n "$HOOKS_PATH" ]; then
     pass0 "Global gitleaks hook" "$GLOBAL_HOOK"
 else
     warn0 "Global gitleaks hook" "Not configured" "./scripts/08-git-ssh.sh"
 fi
 
+# =============================================================================
+# 31. Tracked git config template is unmodified
+#
+# ~/.gitconfig is a symlink to the repo's config/gitconfig. Any `git config
+# --global` write lands in that tracked file and would publish personal data on
+# the next commit (INV-3). A modified template is the visible symptom.
+# =============================================================================
+GITCONFIG_TEMPLATE="$SCRIPT_DIR/config/gitconfig"
+if [ -d "$SCRIPT_DIR/.git" ] && [ -f "$GITCONFIG_TEMPLATE" ]; then
+    if git -C "$SCRIPT_DIR" diff --quiet -- config/gitconfig 2>/dev/null; then
+        pass0 "git config template" "unmodified"
+    else
+        fail0 "git config template" "config/gitconfig has local changes" \
+            "git -C $SCRIPT_DIR diff config/gitconfig  # personal data? restore with: git checkout -- config/gitconfig"
+    fi
+fi
+
 step "Shell configuration"
 
 # =============================================================================
-# 31. oh-my-zsh
+# 32. oh-my-zsh
 # =============================================================================
 if [ -d "$HOME/.oh-my-zsh" ]; then
     pass0 "oh-my-zsh" "$HOME/.oh-my-zsh"
@@ -519,7 +536,7 @@ else
 fi
 
 # =============================================================================
-# 32. Powerlevel10k
+# 33. Powerlevel10k
 # =============================================================================
 P10K_DIR="${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}/themes/powerlevel10k"
 if [ -d "$P10K_DIR" ]; then
@@ -529,7 +546,7 @@ else
 fi
 
 # =============================================================================
-# 33. ~/.zshrc (symlink to config/zshrc?)
+# 34. ~/.zshrc (symlink to config/zshrc?)
 # =============================================================================
 if [ -L "$HOME/.zshrc" ]; then
     ZSHRC_TARGET=$(readlink "$HOME/.zshrc")
@@ -541,7 +558,7 @@ else
 fi
 
 # =============================================================================
-# 34. PATH: ~/dev/base/bin present
+# 35. PATH: ~/dev/base/bin present
 # =============================================================================
 BASE_BIN="$HOME/dev/base/bin"
 if echo "$PATH" | tr ':' '\n' | grep -qx "$BASE_BIN"; then
@@ -555,7 +572,7 @@ fi
 step "macOS system"
 
 # =============================================================================
-# 35. Free disk space
+# 36. Free disk space
 # =============================================================================
 FREE_KB=$(df -k "$HOME" | awk 'NR==2 {print $4}')
 FREE_GB=$((FREE_KB / 1024 / 1024))
@@ -568,7 +585,7 @@ else
 fi
 
 # =============================================================================
-# 36. Rosetta 2
+# 37. Rosetta 2
 # =============================================================================
 if [ "$(uname -m)" = "arm64" ]; then
     if arch -x86_64 /usr/bin/true 2>/dev/null; then
@@ -579,7 +596,7 @@ if [ "$(uname -m)" = "arm64" ]; then
 fi
 
 # =============================================================================
-# 37. macOS version
+# 38. macOS version
 # =============================================================================
 MACOS_VER=$(sw_vers -productVersion)
 MACOS_MAJOR=$(echo "$MACOS_VER" | cut -d. -f1)
@@ -592,7 +609,7 @@ fi
 step "OpenClaw legacy cleanup"
 
 # =============================================================================
-# 38. OpenClaw LaunchAgent — should NOT be present any more
+# 39. OpenClaw LaunchAgent — should NOT be present any more
 # =============================================================================
 OPENCLAW_AGENT="$HOME/Library/LaunchAgents/ai.openclaw.gateway.plist"
 if [ -f "$OPENCLAW_AGENT" ]; then
@@ -602,7 +619,7 @@ else
 fi
 
 # =============================================================================
-# 39. ~/.openclaw — should NOT be present any more
+# 40. ~/.openclaw — should NOT be present any more
 # =============================================================================
 if [ -d "$HOME/.openclaw" ]; then
     warn3 "$HOME/.openclaw" "Still present" "./scripts/90-cleanup-legacy.sh"
@@ -611,7 +628,7 @@ else
 fi
 
 # =============================================================================
-# 40. npm global: openclaw/clawhub — should NOT be installed any more
+# 41. npm global: openclaw/clawhub — should NOT be installed any more
 # =============================================================================
 if have npm; then
     OPENCLAW_NPM=$(npm list -g --depth=0 2>/dev/null | grep -E "openclaw|clawhub" || echo "")
@@ -623,7 +640,7 @@ if have npm; then
 fi
 
 # =============================================================================
-# 41. ~/.zshrc: no OpenClaw references
+# 42. ~/.zshrc: no OpenClaw references
 # =============================================================================
 if [ -f "$HOME/.zshrc" ]; then
     OPENCLAW_REFS=$(grep -c "openclaw\|OPENCLAW" "$HOME/.zshrc" 2>/dev/null || echo "0")
