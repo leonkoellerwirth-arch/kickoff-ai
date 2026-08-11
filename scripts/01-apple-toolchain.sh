@@ -21,13 +21,7 @@ source "$SCRIPT_DIR/lib.sh"
 # APPLE_CLT_ONLY can be set via environment variable or argument
 APPLE_CLT_ONLY="${APPLE_CLT_ONLY:-0}"
 
-for arg in "$@"; do
-    case "$arg" in
-        --dry-run)  DRY_RUN=1; export DRY_RUN ;;
-        --yes)      YES_MODE=1; export YES_MODE ;;
-        --clt-only) APPLE_CLT_ONLY=1 ;;
-    esac
-done
+parse_module_args "${BASH_SOURCE[0]}" "$@"
 
 if [ "$APPLE_CLT_ONLY" = "1" ]; then
     step "01 · Apple CLT (level 0 — Command Line Tools only)"

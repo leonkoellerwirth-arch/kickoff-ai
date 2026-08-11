@@ -19,13 +19,7 @@ source "$SCRIPT_DIR/lib.sh"
 
 FULL_MODE="${FULL_MODE:-0}"
 
-for arg in "$@"; do
-    case "$arg" in
-        --dry-run) DRY_RUN=1; export DRY_RUN ;;
-        --yes)     YES_MODE=1; export YES_MODE ;;
-        --full)    FULL_MODE=1 ;;
-    esac
-done
+parse_module_args "${BASH_SOURCE[0]}" "$@"
 
 step "05 · Python stack"
 

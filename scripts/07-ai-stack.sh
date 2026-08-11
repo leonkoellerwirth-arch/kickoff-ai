@@ -23,13 +23,7 @@ source "$SCRIPT_DIR/lib.sh"
 # Codex, Gemini, Ollama are skipped (level 0/1).
 AI_CLAUDE_ONLY="${AI_CLAUDE_ONLY:-0}"
 
-for arg in "$@"; do
-    case "$arg" in
-        --dry-run)     DRY_RUN=1; export DRY_RUN ;;
-        --yes)         YES_MODE=1; export YES_MODE ;;
-        --claude-only) AI_CLAUDE_ONLY=1 ;;
-    esac
-done
+parse_module_args "${BASH_SOURCE[0]}" "$@"
 
 if [ "$AI_CLAUDE_ONLY" = "1" ]; then
     step "07 · AI stack (Claude Code only — level 0)"
@@ -69,7 +63,7 @@ if [ -f "$TEMPLATE_SETTINGS" ]; then
         info "Template at: $TEMPLATE_SETTINGS"
     else
         info "Creating ~/.claude/settings.json from template..."
-        mkdir -p "$CLAUDE_DIR"
+        run_mkdir "$CLAUDE_DIR"
         run cp "$TEMPLATE_SETTINGS" "$CLAUDE_SETTINGS"
         ok "$HOME/.claude/settings.json created (from template)"
     fi

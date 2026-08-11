@@ -178,6 +178,65 @@ run() {
     "$@"
 }
 
+# Create a directory, honouring dry-run.
+#
+# Several modules called `mkdir -p` and `chmod` directly, outside the run
+# abstraction. SECURITY.md tells readers that --dry-run executes nothing, and
+# the audit path this repo recommends before a real install is exactly that —
+# so a dry run that creates directories and adjusts permissions breaks the one
+# promise the safety advice depends on.
+run_mkdir() {
+    run mkdir -p "$@"
+}
+
+run_chmod() {
+    run chmod "$@"
+}
+
+# =============================================================================
+# Strict option parsing for the modules
+#
+# Every module accepted its two known flags and silently ignored everything
+# else, so `./scripts/04-node.sh --help` installed Node instead of printing
+# help, and a typo in a copy-pasted command was accepted as a normal run. Both
+# matter more here than usual: these commands are published for people to paste
+# into a terminal on a machine they are still setting up.
+#
+# Contract: --help exits 0 BEFORE anything happens, an unknown option exits 2.
+# =============================================================================
+# Usage: parse_module_args "${BASH_SOURCE[0]}" "$@"
+parse_module_args() {
+    local script="$1"
+    shift
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --dry-run)
+                DRY_RUN=1
+                export DRY_RUN
+                ;;
+            --yes)
+                YES_MODE=1
+                export YES_MODE
+                ;;
+            --full)
+                FULL_MODE=1
+                export FULL_MODE
+                ;;
+            -h | --help)
+                # The file header is the help text, so the two cannot drift.
+                sed -n '/^# ===/,/^# ===$/p' "$script" | sed 's/^# \{0,1\}//'
+                exit 0
+                ;;
+            *)
+                printf 'unknown option: %s\n' "$1" >&2
+                printf 'try: %s --help\n' "$script" >&2
+                exit 2
+                ;;
+        esac
+        shift
+    done
+}
+
 # =============================================================================
 # sudo keep-alive
 # =============================================================================

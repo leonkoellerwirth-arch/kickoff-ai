@@ -22,14 +22,17 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib.sh"
 
+# This module has one extra flag, so it filters that out and hands the rest to
+# the shared strict parser — unknown options must still exit 2 here.
 RELAX_QUARANTINE=0
+_args=()
 for arg in "$@"; do
     case "$arg" in
-        --dry-run) DRY_RUN=1; export DRY_RUN ;;
-        --yes)     YES_MODE=1; export YES_MODE ;;
         --relax-download-quarantine) RELAX_QUARANTINE=1 ;;
+        *) _args+=("$arg") ;;
     esac
 done
+parse_module_args "${BASH_SOURCE[0]}" ${_args+"${_args[@]}"}
 
 step "09 · macOS developer settings"
 
