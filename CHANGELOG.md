@@ -14,8 +14,18 @@ Semantics for this repo:
 
 ## [Unreleased]
 
-Remediation of the 2026-08-11 public repository review. See
-`docs/reviews/2026-08-11-response.md` for the per-finding answer.
+_Nothing yet._
+
+## [0.2.0] — 2026-08-11
+
+Remediation of the 2026-08-11 public repository review. All 15 findings
+addressed; see `docs/reviews/2026-08-11-response.md` for the per-finding answer
+with commits and re-check commands.
+
+**Behaviour change:** level 1 now installs `Brewfile.level1` instead of the full
+`Brewfile`. A level-1 run therefore installs 25 fewer packages than before — the
+ones the README always placed at level 2 or 3. Re-run at the level you actually
+want; levels remain cumulative and re-running is safe.
 
 ### Security
 - Git identity and machine-local paths are written to `~/.gitconfig.local`, never through the

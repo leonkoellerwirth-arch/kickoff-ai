@@ -92,6 +92,9 @@ jobs:
       #
       # A file has neither property: content is copied, never evaluated.
       - name: Extract release notes from CHANGELOG.md
+        env:
+          # Through env:, never interpolated into the script body.
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
           set -euo pipefail
 
@@ -103,15 +106,28 @@ jobs:
             exit 0
           fi
 
-          # Extract the [Unreleased] section: from ## [Unreleased] to the next ## [
-          awk '
-            /^## \[Unreleased\]/ { in_section=1; next }
-            in_section && /^## \[/ { exit }
-            in_section { print }
-          ' CHANGELOG.md | sed '/^[[:space:]]*$/d' | head -200 > "$notes_file"
+          # Read the section for THIS version, e.g. "## [0.2.0] — 2026-08-11".
+          # Reading [Unreleased] instead only works if the changelog has not been
+          # rolled over yet — which is exactly what you do just before tagging,
+          # so it produced empty notes for every properly prepared release.
+          extract() {
+            awk -v want="$1" '
+              $0 ~ "^## \\[" want "\\]" { in_section = 1; next }
+              in_section && /^## \[/ { exit }
+              in_section { print }
+            ' CHANGELOG.md | sed '/^[[:space:]]*$/d' | head -200
+          }
+
+          extract "$VERSION" > "$notes_file"
+
+          # Fall back to [Unreleased] for a tag cut without rolling the changelog.
+          if [ ! -s "$notes_file" ]; then
+            echo "No [$VERSION] section — falling back to [Unreleased]"
+            extract "Unreleased" > "$notes_file"
+          fi
 
           if [ ! -s "$notes_file" ]; then
-            echo "No entries in the [Unreleased] section." > "$notes_file"
+            echo "_No changelog entries for this release._" > "$notes_file"
           fi
 
           echo "Release notes prepared ($(wc -l < "$notes_file" | tr -d ' ') lines)"
