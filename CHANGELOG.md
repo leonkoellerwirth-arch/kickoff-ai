@@ -75,10 +75,10 @@ _Nothing yet._
 
 ---
 
-## [0.1.0] — 2026-08-11
+## [0.0.1] — 2026-08-10 (pre-release scaffold, never tagged)
 
 ### Added
-- Initial commit: bootstrap system with modules 00–11 and 90
+- Initial scaffold: bootstrap system with modules 00–11 and 90
 - Brewfile (core packages) and Brewfile.optional
 - Configuration files (zshrc, gitconfig, vscode-extensions.txt)
 - Documentation (docs/00 through docs/05 in German, QUICKSTART.md, README.md)
