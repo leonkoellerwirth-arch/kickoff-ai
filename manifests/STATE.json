@@ -1,9 +1,11 @@
 {
-  "last_check": "2026-08-10T22:35:09Z",
-  "checked_count": 93,
+  "last_check": "2026-08-11T09:26:31Z",
+  "checked_count": 25,
   "update_available": 0,
   "sunset_candidate": 0,
-  "adoption_candidate": 6,
+  "adoption_candidate": 0,
   "review_due": 0,
-  "drift_found": true
+  "drift_found": false,
+  "check_errors": 0,
+  "check_complete": true
 }

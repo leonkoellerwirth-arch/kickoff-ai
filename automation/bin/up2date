@@ -59,9 +59,11 @@ Options:
   --help            Show this help
 
 Exit codes:
-  0  All current / no drift
+  0  All current / no drift, and every entry was checked successfully
   1  Drift found (updates, sunset candidates, review due)
-  2  Error (yq/jq missing, tools.yaml unreadable, etc.)
+  2  The check could not complete: yq/jq missing, tools.yaml unreadable, or one
+     or more entries could not be reached upstream. Never treat 2 as "clean" —
+     a caller that maps it to zero findings reintroduces silent rot.
 
 Important: this command never installs or uninstalls anything.
            Updates are only written to the registry with --apply-versions.
@@ -428,6 +430,45 @@ EOF
 # =============================================================================
 # Output formatter
 # =============================================================================
+
+# Indices 0..n-1, and nothing at all when n is 0.
+#
+# This exists because `seq` is not portable in the one case that matters here.
+# BSD seq — the one macOS ships, which is the only platform this repo targets —
+# counts DOWNWARDS when the end value is below the start: `seq 0 -1` prints
+# "0" and "-1". GNU seq prints nothing. So with zero findings, every loop below
+# used to run twice over unset array elements and abort under `set -u` with
+# "RES_CAT[0]: unbound variable".
+#
+# The consequence was the exact opposite of this tool's purpose: a check that
+# found no drift crashed, the weekly workflow swallowed the crash with
+# `|| true`, and "the currency check is broken" became indistinguishable from
+# "everything is up to date".
+res_indices() {
+    local n="${1:-0}" i=0
+    [ "$n" -gt 0 ] 2>/dev/null || return 0
+    while [ "$i" -lt "$n" ]; do
+        printf '%s\n' "$i"
+        i=$((i + 1))
+    done
+}
+
+# The exit-code contract, in one place so every output format agrees:
+#
+#   0  checked cleanly, no drift
+#   1  drift found — the documented, expected outcome CI may act on
+#   2  the check itself could not complete for one or more entries
+#
+# 2 exists so "no findings" can never be produced by a broken check. A caller
+# that treats every non-zero as drift, or every zero as healthy, is now wrong
+# in a way that shows up rather than one that stays silent.
+_result_code() {
+    local total="${1:-0}" errs="${2:-0}"
+    [ "$errs" -gt 0 ] 2>/dev/null && return 2
+    [ "$total" -gt 0 ] 2>/dev/null && return 1
+    return 0
+}
+
 _output_results() {
     local checked="${1:-0}"
     local errs="${2:-0}"
@@ -438,7 +479,7 @@ _output_results() {
     now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
     upd=0; sun=0; adop=0; rev=0
     local i
-    for i in $(seq 0 $((total - 1))); do
+    for i in $(res_indices "$total"); do
         case "${RES_CAT[$i]}" in
             update)   upd=$((upd + 1)) ;;
             sunset)   sun=$((sun + 1)) ;;
@@ -448,21 +489,24 @@ _output_results() {
     done
     local drift_found="false"
     [ "$total" -gt 0 ] && drift_found="true"
+    local check_ok="true"
+    [ "$errs" -gt 0 ] 2>/dev/null && check_ok="false"
 
-    printf '{\n  "last_check": "%s",\n  "checked_count": %d,\n  "update_available": %d,\n  "sunset_candidate": %d,\n  "adoption_candidate": %d,\n  "review_due": %d,\n  "drift_found": %s\n}\n' \
-        "$now" "$checked" "$upd" "$sun" "$adop" "$rev" "$drift_found" > "$STATE_JSON"
+    printf '{\n  "last_check": "%s",\n  "checked_count": %d,\n  "update_available": %d,\n  "sunset_candidate": %d,\n  "adoption_candidate": %d,\n  "review_due": %d,\n  "drift_found": %s,\n  "check_errors": %d,\n  "check_complete": %s\n}\n' \
+        "$now" "$checked" "$upd" "$sun" "$adop" "$rev" "$drift_found" "$errs" "$check_ok" > "$STATE_JSON"
 
     # JSON output
     if [ "$OPT_JSON" = "1" ]; then
         local json_items=""
-        for i in $(seq 0 $((total - 1))); do
+        for i in $(res_indices "$total"); do
             [ -n "$json_items" ] && json_items="$json_items,"
             json_items="$json_items
   {\"id\":\"${RES_IDS[$i]}\",\"name\":\"${RES_NAME[$i]}\",\"category\":\"${RES_CAT[$i]}\",\"version_seen\":\"${RES_SEEN[$i]}\",\"upstream\":\"${RES_UPSTREAM[$i]}\",\"message\":\"${RES_MSG[$i]}\",\"command\":\"${RES_CMD[$i]}\"}"
         done
         printf '[%s\n]\n' "$json_items"
-        [ "$total" -gt 0 ] && return 1
-        return 0
+        local code=0
+        _result_code "$total" "$errs" || code=$?
+        return "$code"
     fi
 
     # Markdown output
@@ -474,7 +518,7 @@ _output_results() {
         local cat
         for cat in update sunset adoption review; do
             local cat_items=0
-            for i in $(seq 0 $((total - 1))); do
+            for i in $(res_indices "$total"); do
                 [ "${RES_CAT[$i]}" = "$cat" ] && cat_items=$((cat_items + 1))
             done
             [ "$cat_items" = "0" ] && continue
@@ -489,7 +533,7 @@ _output_results() {
             md_content="$md_content| Tool | Seen | Upstream | Note | Command |\n"
             md_content="$md_content|---|---|---|---|---|\n"
 
-            for i in $(seq 0 $((total - 1))); do
+            for i in $(res_indices "$total"); do
                 [ "${RES_CAT[$i]}" != "$cat" ] && continue
                 md_content="$md_content| ${RES_NAME[$i]} | ${RES_SEEN[$i]:-—} | ${RES_UPSTREAM[$i]:-—} | ${RES_MSG[$i]} | \`${RES_CMD[$i]}\` |\n"
             done
@@ -509,12 +553,20 @@ _output_results() {
             printf '%b' "$md_content"
         fi
 
-        [ "$total" -gt 0 ] && return 1
-        return 0
+        local code=0
+        _result_code "$total" "$errs" || code=$?
+        return "$code"
     fi
 
     # Terminal table
     if [ "$total" = "0" ]; then
+        if [ "$errs" -gt 0 ] 2>/dev/null; then
+            # Not the same as "all current": these entries were never
+            # successfully checked, and saying otherwise is the failure mode
+            # this tool exists to prevent.
+            warn "$errs of $checked entries could not be checked — result incomplete"
+            return 2
+        fi
         ok "All current — no findings ($checked checked)"
         return 0
     fi
@@ -524,7 +576,7 @@ _output_results() {
     local cat
     for cat in update sunset adoption review; do
         local header_printed=0
-        for i in $(seq 0 $((total - 1))); do
+        for i in $(res_indices "$total"); do
             [ "${RES_CAT[$i]}" != "$cat" ] && continue
 
             if [ "$header_printed" = "0" ]; then
@@ -554,7 +606,13 @@ _output_results() {
     printf '%sNote: Installation is a deliberate second step.%s\n' "$_YELLOW" "$_RESET" >&2
     printf '%sNothing is ever installed or uninstalled automatically.%s\n\n' "$_YELLOW" "$_RESET" >&2
 
-    return 1
+    if [ "$errs" -gt 0 ] 2>/dev/null; then
+        warn "$errs of $checked entries could not be checked — result incomplete"
+    fi
+
+    local code=0
+    _result_code "$total" "$errs" || code=$?
+    return "$code"
 }
 
 # =============================================================================
@@ -570,7 +628,12 @@ case "$CMD" in
         exit 0
         ;;
     check)
-        run_check
+        # Same reason: run_check legitimately returns 1 (drift) or 2 (incomplete
+        # check), and `set -e` would otherwise abort here rather than let the
+        # exit code be passed on deliberately.
+        check_code=0
+        run_check || check_code=$?
+        exit "$check_code"
         ;;
     *)
         usage

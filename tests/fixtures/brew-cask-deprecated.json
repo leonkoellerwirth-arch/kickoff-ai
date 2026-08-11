@@ -1,0 +1,12 @@
+{
+  "formulae": [],
+  "casks": [
+    {
+      "token": "example-retired-app",
+      "version": "3.1.0",
+      "deprecated": true,
+      "disabled": false,
+      "deprecation_reason": "discontinued upstream"
+    }
+  ]
+}

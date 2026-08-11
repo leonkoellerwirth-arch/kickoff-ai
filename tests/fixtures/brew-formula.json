@@ -1,0 +1,14 @@
+{
+  "formulae": [
+    {
+      "name": "jq",
+      "full_name": "jq",
+      "versions": {
+        "stable": "1.8.2"
+      },
+      "deprecated": false,
+      "disabled": false
+    }
+  ],
+  "casks": []
+}
