@@ -3,7 +3,7 @@
 > Every setup repo is correct on the day it's written. This one knows when it stops being true.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![macOS 26+](https://img.shields.io/badge/macOS-26%2B-lightgrey)](#what-this-is-not)
+[![macOS 26.5 tested](https://img.shields.io/badge/macOS-26.5%20tested-lightgrey)](#what-this-is-not)
 [![shellcheck](https://img.shields.io/badge/shellcheck-clean-brightgreen)](https://github.com/koalaman/shellcheck)
 [![CI](https://github.com/leonkoellerwirth-arch/kickoff-ai/actions/workflows/validate.yml/badge.svg)](https://github.com/leonkoellerwirth-arch/kickoff-ai/actions/workflows/validate.yml)
 
@@ -152,9 +152,10 @@ automation/bin/         14 commands — all support --dry-run and --help
 automation/launchd/     launchd job templates + install/uninstall scripts
 automation/manifests/   ollama-models.txt and other managed lists
 
-Brewfile                Pinned core packages
+Brewfile                Declared core packages (full stack, level 2+)
 Brewfile.optional       Optional tools (nmap, sqlmap, ocrmypdf, …)
-Brewfile.level0         Minimal set for Level 0 only
+Brewfile.level0         Minimal set for level 0
+Brewfile.level1         Base stack for level 1, derived from the registry
 
 templates/vaultwarden/  docker-compose.yml + .env.example for self-hosted secrets
 config/                 zshrc, zprofile, gitconfig, gitignore_global, vscode-extensions.txt
@@ -198,6 +199,8 @@ Ollama runs as a brew formula, not a container — Metal acceleration on Apple S
 - **Not Nix.** There is no byte-level reproducibility guarantee. Two setups from the same repo at different points in time will differ by tool version drift, macOS delta updates, and Homebrew formula changes. The currency system makes that drift visible; it does not eliminate it.
 - **Not a fleet management tool.** No MDM integration, no multi-machine rollout, no central control plane. This is a single-developer setup for a single machine.
 - **Not cross-platform.** macOS on Apple Silicon only. The Intel path has not been maintained.
+
+- **Not tested across macOS versions.** It was distilled from, and verified on, exactly one machine running macOS 26.5. `prepare.sh` accepts macOS 15+ because that is the floor the scripts are written against — not because anyone has run this on 15, 16 or anything between. Treat any other version as untested.
 - **Not tested on multiple machines.** It is distilled from one real setup — 58 repositories, a verified inventory of the actual machine state, and a gap analysis that was deliberately unsympathetic. [docs/02-GAP-ANALYSIS.md](docs/02-GAP-ANALYSIS.md) shows what that means in practice.
 - **Not zero-config for your setup.** You will adapt `manifests/tools.yaml`, `Brewfile`, and `config/` to your stack. The structure is the value, not the exact tool list.
 
@@ -205,7 +208,7 @@ Ollama runs as a brew formula, not a container — Metal acceleration on Apple S
 
 ## Who It's For
 
-A senior developer running a mixed stack — web frontends, Python services, iOS apps, AI agents — who wants a setup that can be reproduced exactly one year from now, not just today.
+A senior developer running a mixed stack — web frontends, Python services, iOS apps, AI agents — who wants a setup that is still *structurally* reproducible a year from now, with any drift made visible rather than silently absorbed. Not byte-identical: Homebrew and macOS move underneath you, and this repo reports that instead of pretending otherwise.
 
 The background is enterprise architecture in regulated environments (AI governance, BaFin/DORA context). That means: audit trails over convenience, explicit decisions over automation, and a strong preference for tools that do exactly what they say and nothing more.
 

@@ -2,7 +2,7 @@
 # =============================================================================
 # doctor.sh — System verification (read-only)
 #
-# Purpose:  Checks ~41 items of the developer stack for correctness.
+# Purpose:  Checks 42 items of the developer stack for correctness.
 #           For each item: PASS / WARN / FAIL + fix hint.
 #           Exit code: 0 = all OK, 1 = at least one FAIL.
 # Changes:  Nothing — read-only
@@ -70,7 +70,7 @@ if [ -n "$DOCTOR_LEVEL" ]; then
 fi
 
 # Total number of checks (for summary line)
-TOTAL_CHECKS=41
+TOTAL_CHECKS=42
 SKIPPED_COUNT=0
 
 # =============================================================================

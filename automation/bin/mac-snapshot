@@ -155,8 +155,9 @@ step "Capturing global npm packages actual state"
 
 if have npm; then
     # Format: @scope/package@version or package@version, one per line
+    # Scope-preserving: see status-quo.sh.
     npm_ist=$(npm list -g --depth=0 --parseable 2>/dev/null | \
-        awk -F/ '{print $NF}' | grep -v '^npm$' | sort || echo "")
+        awk -F/ '{ if ($(NF-1) ~ /^@/) print $(NF-1) "/" $NF; else print $NF }' | grep -v '^npm$' | sort || echo "")
     write_ist "npm-globals-actual.txt" "$npm_ist"
 
     soll_npm="$REPO_ROOT/automation/manifests/npm-globals.txt"

@@ -6,7 +6,10 @@
 #           A second run is safe (idempotent).
 # Changes:  Homebrew, ~/.zshrc, ~/.gitconfig, VS Code, SSH keys,
 #           Python/Node stack, AI tools, macOS defaults, ~/dev structure
-# Requires: Internet connection, macOS 15+, Apple Silicon (arm64)
+# Requires: Internet connection, Apple Silicon (arm64).
+#           Tested on macOS 26.5 only — that is the one machine this setup was
+#           distilled from. prepare.sh accepts macOS 15+, which is the floor the
+#           scripts are written against, not a version anyone has verified.
 # Usage:    ./bootstrap.sh [options]
 #
 # Options:
@@ -24,7 +27,7 @@
 #
 # Levels (cumulative, each level includes everything from the previous):
 #   0  Emergency   ~15 min  CLT, minimal brew formulas, Shell, Node, git, Claude
-#   1  Base        ~45 min  + full Brewfile, Python (uv), macOS defaults,
+#   1  Base        ~45 min  + Brewfile.level1, Python (uv), macOS defaults,
 #                           VS Code + extensions, ~/dev + dev/base
 #   2  Full        ~2 h     + Docker, Xcode (full), Codex, Gemini, Ollama
 #   3  Maximum     ~3 h+    + Brewfile.optional, automation/ (if present)
@@ -34,7 +37,8 @@
 # Modules (numbers or names):
 #   00  preflight        Pre-flight checks
 #   01  apple-toolchain  Xcode CLT, licenses (level 0/1: CLT only)
-#   02  homebrew         Homebrew + taps + Brewfile (level 0: Brewfile.level0)
+#   02  homebrew         Homebrew + taps + Brewfile
+#                        (level 0: Brewfile.level0, level 1: Brewfile.level1)
 #   03  shell            oh-my-zsh, p10k, config/zshrc
 #   04  node             nvm, Node 24, pnpm, bun, deno
 #   05  python           uv, pipx (level 1+ only)
@@ -76,6 +80,8 @@ FULL_MODE=0
 ONLY_MODULES=""
 SKIP_MODULES=""
 BOOTSTRAP_LEVEL=""    # empty = default run (equivalent to level 2)
+MODULE_FAILURES=0
+DOCTOR_FAILED=0
 LIST_LEVELS=0
 
 # =============================================================================
@@ -97,7 +103,7 @@ show_levels() {
     printf "%-5s %-13s %-10s %s\n" "0" "Emergency" "~15 min" "preflight, apple-toolchain (CLT), homebrew (core)," >&2
     printf "%-5s %-13s %-10s %s\n" "" "" "" "shell, node, git-ssh, ai-stack (Claude Code only)" >&2
     printf "\n" >&2
-    printf "%-5s %-13s %-10s %s\n" "1" "Base" "~45 min" "+ full Brewfile, python (uv)," >&2
+    printf "%-5s %-13s %-10s %s\n" "1" "Base" "~45 min" "+ Brewfile.level1, python (uv)," >&2
     printf "%-5s %-13s %-10s %s\n" "" "" "" "macos-defaults, editors (VS Code), paved-road" >&2
     printf "\n" >&2
     printf "%-5s %-13s %-10s %s\n" "2" "Full" "~2 h   " "+ containers (Docker), apple-toolchain (Xcode)," >&2
@@ -228,6 +234,10 @@ run_module() {
     else
         warn "Module failed: $display_name"
         summary_warn "$display_name (error)"
+        # Counted, not just warned about. Continuing after a failure is a
+        # convenience, not a redefinition of success: the run still ends
+        # non-zero and does not claim to be complete.
+        MODULE_FAILURES=$((MODULE_FAILURES + 1))
         if ! confirm "Continue with the next module?"; then
             err "Bootstrap aborted."
         fi
@@ -282,9 +292,20 @@ fi
 export APPLE_CLT_ONLY
 APPLE_CLT_ONLY="${APPLE_CLT_ONLY:-0}"
 
-# Homebrew: level 0 = Brewfile.level0; level 1+ = full Brewfile
-if [ "$EFFECTIVE_LEVEL" -eq 0 ] && [ -z "$ONLY_MODULES" ]; then
-    HOMEBREW_EXTRA="OVERRIDE_BREWFILE=$REPO_DIR/Brewfile.level0"
+# Homebrew: level 0 = Brewfile.level0, level 1 = Brewfile.level1,
+# level 2+ = full Brewfile.
+#
+# Level 1 used the FULL Brewfile until 2026-08-11, which pulled in 25 packages
+# the README places at level 2 or 3 — Docker, Go, Rust, PHP, Ruby, the JVM
+# stack, the media toolchain. The level table was therefore wrong about both
+# scope and the ~45 minute estimate, and "cumulative levels" was not a real
+# boundary. Brewfile.level1 is derived from the registry (INV-8).
+if [ -z "$ONLY_MODULES" ]; then
+    case "$EFFECTIVE_LEVEL" in
+        0) HOMEBREW_EXTRA="OVERRIDE_BREWFILE=$REPO_DIR/Brewfile.level0" ;;
+        1) HOMEBREW_EXTRA="OVERRIDE_BREWFILE=$REPO_DIR/Brewfile.level1" ;;
+        *) HOMEBREW_EXTRA="" ;;
+    esac
 else
     HOMEBREW_EXTRA=""
 fi
@@ -397,9 +418,20 @@ fi
 END_TIME=$(date '+%s')
 ELAPSED=$((END_TIME - START_TIME))
 
-printf "\n%s%s========================================%s\n" "$_BOLD" "$_GREEN" "$_RESET" >&2
-printf "%s%s  Bootstrap complete (%ds)%s\n" "$_BOLD" "$_GREEN" "$ELAPSED" "$_RESET" >&2
-printf "%s%s========================================%s\n" "$_BOLD" "$_GREEN" "$_RESET" >&2
+# "Complete" is a claim about the outcome, so it is only printed when the
+# outcome supports it. README promises that FAILs block the setup as complete;
+# until now this banner and exit 0 came unconditionally, so an automated caller
+# could not tell a clean run from a broken one.
+if [ "$MODULE_FAILURES" -eq 0 ]; then
+    printf "\n%s%s========================================%s\n" "$_BOLD" "$_GREEN" "$_RESET" >&2
+    printf "%s%s  All modules finished (%ds) — verifying...%s\n" "$_BOLD" "$_GREEN" "$ELAPSED" "$_RESET" >&2
+    printf "%s%s========================================%s\n" "$_BOLD" "$_GREEN" "$_RESET" >&2
+else
+    printf "\n%s%s========================================%s\n" "$_BOLD" "$_RED" "$_RESET" >&2
+    printf "%s%s  Bootstrap INCOMPLETE — %d module(s) failed (%ds)%s\n" \
+        "$_BOLD" "$_RED" "$MODULE_FAILURES" "$ELAPSED" "$_RESET" >&2
+    printf "%s%s========================================%s\n" "$_BOLD" "$_RED" "$_RESET" >&2
+fi
 
 # Manual steps
 summary_manual "claude login                 → Connect Claude Code to your account"
@@ -440,10 +472,16 @@ fi
 if [ -f "$REPO_DIR/doctor.sh" ]; then
     info "Running doctor.sh..."
     printf "\n" >&2
-    DOCTOR_ARGS="--no-exit"
-    [ -n "$BOOTSTRAP_LEVEL" ] && DOCTOR_ARGS="$DOCTOR_ARGS --level $BOOTSTRAP_LEVEL"
+    # NOT --no-exit: that flag makes doctor return 0 even when it reports
+    # FAILs, which is exactly how a FAIL used to end up in an overall exit 0.
+    # The `if !` already prevents doctor from terminating bootstrap under
+    # `set -e`, so suppressing its exit code buys nothing and hides the result.
+    DOCTOR_ARGS=""
+    [ -n "$BOOTSTRAP_LEVEL" ] && DOCTOR_ARGS="--level $BOOTSTRAP_LEVEL"
     # shellcheck disable=SC2086
-    bash "$REPO_DIR/doctor.sh" $DOCTOR_ARGS || true
+    if ! bash "$REPO_DIR/doctor.sh" $DOCTOR_ARGS; then
+        DOCTOR_FAILED=1
+    fi
 fi
 
 if [ "$DRY_RUN" = "1" ]; then
@@ -452,3 +490,22 @@ if [ "$DRY_RUN" = "1" ]; then
 fi
 
 sudo_keepalive_stop 2>/dev/null || true
+
+# =============================================================================
+# Exit code
+#
+# A setup script is something other scripts call. "It ran" and "it worked" have
+# to be distinguishable, or every caller downstream inherits a false premise.
+#   0  everything ran and doctor is clean
+#   1  at least one module failed
+#   2  modules ran, but doctor reports FAILs
+# =============================================================================
+if [ "$MODULE_FAILURES" -gt 0 ]; then
+    warn "$MODULE_FAILURES module(s) failed — the setup is NOT complete."
+    exit 1
+fi
+if [ "$DOCTOR_FAILED" = "1" ]; then
+    warn "doctor.sh reports FAILs — the setup is not verified. Fix them and re-run."
+    exit 2
+fi
+exit 0

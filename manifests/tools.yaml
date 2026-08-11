@@ -760,7 +760,7 @@
   category: containers
   source: cask
   ref: docker
-  level: 1
+  level: 2
   status: active
   version_seen: "28.0.4"
   version_check: brew
@@ -812,7 +812,7 @@
   category: ai
   source: brew
   ref: gemini-cli
-  level: 1
+  level: 2
   status: active
   version_seen: ""
   version_check: brew
@@ -828,7 +828,7 @@
   category: ai
   source: brew
   ref: ollama
-  level: 1
+  level: 2
   status: active
   version_seen: "0.32.4"
   version_check: brew
@@ -844,7 +844,7 @@
   category: ai
   source: cask
   ref: ollama
-  level: 1
+  level: 2
   status: candidate
   version_seen: ""
   version_check: brew

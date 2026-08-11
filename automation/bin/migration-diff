@@ -339,8 +339,11 @@ if _should_run "npm"; then
     step "npm globals"
 
     _OLD_NPM=$(_profile_lines ".npm.global")
+    # Scope-preserving: see status-quo.sh. Losing it here produces
+    # "npm install -g codex" in the migration report, which installs the wrong
+    # package or nothing at all.
     _NEW_NPM=$(npm list -g --depth=0 --parseable 2>/dev/null \
-        | awk -F/ 'NR>1{print $NF}' | sort || echo "")
+        | awk -F/ 'NR>1{ if ($(NF-1) ~ /^@/) print $(NF-1) "/" $NF; else print $NF }' | sort || echo "")
 
     # Strip version from package names for name comparison
     _strip_version() {

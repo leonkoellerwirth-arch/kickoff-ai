@@ -140,12 +140,17 @@ fi
 # =============================================================================
 info "Checking global npm packages..."
 
-# Packages from inventory (verified):
-# @openai/codex — installed in module 07 (AI stack)
-# @kilocode/cli, @steipete/oracle, mcporter, omniroute, ruflo, sharp-cli, uipro-cli
-# corepack — handled above
-# NOT any more: openclaw, clawhub (OpenClaw is being uninstalled)
-
+# Candidate packages from the inventory. The registry — not this list — decides
+# what is actually installed (INV-8), and it is consulted for two things:
+#
+#   status: only `active` is installed. INV-1 says adoption is a deliberate
+#           human step, so a `candidate` entry must never be installed by a
+#           default run. Six of the seven packages below are candidates.
+#   level:  only entries at or below the selected level. The README promises
+#           levels are cumulative and bounded; installing level-3 tools during
+#           a level-1 run makes that promise false.
+#
+# Adopt a candidate with: automation/bin/sunset adopt <id>
 NPM_GLOBAL_PACKAGES=(
     "@kilocode/cli"
     "@steipete/oracle"
@@ -156,8 +161,36 @@ NPM_GLOBAL_PACKAGES=(
     "uipro-cli"
 )
 
+REGISTRY="$(cd "$SCRIPT_DIR/.." && pwd)/manifests/tools.yaml"
+EFFECTIVE_LEVEL="${BOOTSTRAP_LEVEL:-2}"
+
+# Returns "<status> <level>" for an npm ref, or nothing if it is not registered.
+registry_npm_entry() {
+    [ -f "$REGISTRY" ] || return 0
+    have yq || return 0
+    yq e -r ".[] | select(.source == \"npm\" and .ref == \"$1\") | .status + \" \" + (.level | tostring)" \
+        "$REGISTRY" 2>/dev/null | head -1
+}
+
 if have npm; then
     for pkg in "${NPM_GLOBAL_PACKAGES[@]}"; do
+        entry="$(registry_npm_entry "$pkg")"
+        pkg_status="${entry%% *}"
+        pkg_level="${entry##* }"
+
+        if [ -z "$entry" ]; then
+            warn "  npm global: $pkg not in the registry — skipped (add it to manifests/tools.yaml)"
+            continue
+        fi
+        if [ "$pkg_status" != "active" ]; then
+            info "  npm global: $pkg skipped (status=$pkg_status — adopt it first: sunset adopt)"
+            continue
+        fi
+        if [ "$pkg_level" -gt "$EFFECTIVE_LEVEL" ] 2>/dev/null; then
+            info "  npm global: $pkg skipped (level $pkg_level > current level $EFFECTIVE_LEVEL)"
+            continue
+        fi
+
         # Check whether already installed globally
         if npm list -g --depth=0 "$pkg" >/dev/null 2>&1; then
             ok "  npm global: $pkg (present)"

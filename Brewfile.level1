@@ -1,0 +1,42 @@
+# =============================================================================
+# Brewfile.level1 — Base development stack (level 1, ~45 minutes)
+#
+# Cumulative on top of Brewfile.level0. Everything the README promises after
+# level 1, and nothing from a higher level.
+#
+# Derived from manifests/tools.yaml (INV-8): source brew/cask, status active,
+# level <= 1. Docker, Ollama and the Gemini CLI are deliberately NOT here —
+# the README places them at level 2 and bootstrap.sh already gates the AI
+# stack the same way.
+#
+# Full stack (level 2+) → Brewfile
+# =============================================================================
+
+# Formulae
+brew "git"  # Brew git must take precedence over /usr/bin/git; newer version with LFS support
+brew "git-lfs"  # Git Large File Storage for binary files in repos (globally enabled)
+brew "gh"  # GitHub interaction from the terminal (PRs, Issues, Releases, API)
+brew "shellcheck"  # Shell script linter; required dependency for CI quality gate
+brew "jq"  # JSON processing; used by up2date, sunset, and all automation scripts
+brew "yq"  # YAML processing; required by the gate's YAML, workflow and registry-schema checks
+brew "tmux"  # Terminal multiplexer for persistent sessions, especially in remote environments
+brew "tree"  # Directory visualization; used in inventory scripts and documentation
+brew "watch"  # Periodically execute commands (monitoring, service status)
+brew "wget"  # HTTP/FTP downloader with resume support; complement to curl
+brew "ripgrep"  # Fast grep (rg) with .gitignore support; primary search tool
+brew "cmake"  # Build system; dependency of MLX, LLVM, and other native libraries
+brew "pnpm"  # Default package manager for JS projects; symlink store, faster than npm, strict isolation
+brew "uv"  # Primary Python package manager; 10-100x faster than pip, manages Python versions
+brew "pipx"  # Isolated installation of Python CLI tools; alternative to uv tool for legacy packages
+brew "postgresql@17"  # PostgreSQL database for projects that require a local PG instance (Brewfile: @17, inventory: @14)
+brew "mysql@8.0"  # MySQL 8 for local PHP projects; brew services running; complemented by Docker stacks
+brew "gitleaks"  # Secret scanning in Git repos; required tool for this public repo
+brew "bitwarden-cli"  # Bitwarden CLI (bw) for secrets management against self-hosted Vaultwarden; credential injection via env-run
+
+# Casks
+cask "visual-studio-code"  # Primary editor for TypeScript/React, Python/FastAPI, PHP; 69 extensions installed
+cask "iterm2"  # Primary terminal; cc-status hook for Claude Code status bar integrated in iTerm2
+cask "ghostty"  # Modern terminal emulator as an alternative to iTerm2; configuration currently empty
+cask "postman"  # API test client for REST/GraphQL development and API debugging
+cask "raycast"  # Spotlight replacement with extensions; primary launcher and workflow automation tool
+cask "alt-tab"  # macOS Alt+Tab replacement with window preview; improves window navigation
