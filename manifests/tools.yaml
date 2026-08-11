@@ -135,6 +135,22 @@
   sunset: null
   replaced_by: null
 
+- id: yq
+  name: yq
+  category: shell
+  source: brew
+  ref: yq
+  level: 0
+  status: active
+  version_seen: ""
+  version_check: brew
+  check_ref: yq
+  why: "YAML processing; required by the gate's YAML, workflow and registry-schema checks"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
 - id: tmux
   name: tmux
   category: shell

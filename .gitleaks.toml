@@ -1,15 +1,26 @@
-# Canonical gitleaks config — copy to a repo root as .gitleaks.toml.
-# Used by scripts/gate.sh (when gitleaks is installed), .pre-commit-config.yaml, and CI.
-# Extends the maintained default ruleset so new secret shapes are covered automatically.
-title = "paved-road gitleaks"
+# gitleaks config for kickoff-ai.
+# Used by scripts/checks/secrets.sh — which is what scripts/gate.sh,
+# .pre-commit-config.yaml and .github/workflows/validate.yml all call, so there
+# is one ruleset and one implementation rather than three that can disagree.
+# Extends the maintained default ruleset so new secret shapes are covered
+# automatically.
+title = "kickoff-ai gitleaks"
 
 [extend]
 useDefault = true
 
 [allowlist]
-description = "Files that legitimately carry secret-shaped example strings"
-paths = [
-  '''\.env\.example$''',
-  '''(^|/)LESSONS\.md$''',
-  '''(^|/)CONSTITUTION\.md$''',
+description = """
+Deliberately narrow. Whole-path exemptions are avoided: allowlisting
+'\\.env\\.example$' as a path would stop gitleaks looking at exactly the file
+type most likely to receive a real value by accident. Only the specific
+placeholder strings that actually appear are exempted, so a real secret checked
+into the same file is still caught.
+"""
+regexes = [
+  # The literal placeholder in templates/vaultwarden/.env.example.
+  '''INSERT_ARGON2_HASH_HERE''',
+  # The truncated argon2 example in the same file's comment block — a hash
+  # shape with no payload, shown so the reader recognises correct output.
+  '''\$argon2id\$v=19\$m=65540,t=3,p=4\$\.\.\.''',
 ]

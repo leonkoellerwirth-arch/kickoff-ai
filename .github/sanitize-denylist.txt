@@ -17,6 +17,11 @@
 # Allowed: /Users/Shared, no match on /Users/$USER or /Users/<var>
 /Users/[a-zA-Z][a-zA-Z0-9_-]{1,}
 
+# Email addresses. Placeholder and noreply forms are exempted in the allowlist.
+# Previously hard-coded in validate.yml; moved here so the scan and the
+# documented pattern list have exactly one source.
+[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}
+
 # GitHub token prefixes
 gho_[A-Za-z0-9]{36,}
 ghp_[A-Za-z0-9]{36,}
