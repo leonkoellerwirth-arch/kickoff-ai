@@ -1,0 +1,356 @@
+#!/usr/bin/env bash
+# =============================================================================
+# automation/bin/mac-clean — Storage hygiene for the development system
+#
+# Problem:    Only 43 GB of 926 GB free (96% used, INVENTORY §0 / Gap analysis A.14).
+#             Docker images, Xcode artefacts, Homebrew caches, npm/pnpm/conda caches
+#             and Ollama models gradually fill the SSD.
+# Does:       Cleans up in a defined order with before/after size reporting:
+#             Docker (prune, stopped containers, dangling images, volumes only with confirmation),
+#             Xcode DerivedData + iOS DeviceSupport + old simulator runtimes,
+#             Homebrew cleanup, npm/pnpm/bun/uv caches, conda clean,
+#             list orphaned node_modules (not deleted), Trash.
+# Changes:    NOTHING without --apply. Default is dry-run (report).
+#             Volumes and node_modules are NEVER deleted automatically.
+# Usage:      mac-clean [--apply] [--dry-run] [--only <group>] [--help]
+#             Groups: docker xcode brew node conda trash
+# =============================================================================
+set -euo pipefail
+
+AUTOMATION_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$AUTOMATION_DIR/lib-automation.sh"
+
+# =============================================================================
+# Argument parsing
+# Default: no --apply → everything is dry-run (report only)
+# =============================================================================
+APPLY=0
+ONLY_GROUP=""
+STALE_DAYS=30  # node_modules threshold: projects older than N days
+
+for arg in "$@"; do
+    case "$arg" in
+        --apply)    APPLY=1 ;;
+        --dry-run)  APPLY=0 ;;
+        --only)     ONLY_NEXT=1 ;;
+        --help|-h)
+            cat >&2 <<'EOF'
+Usage: mac-clean [--apply] [--only <group>] [--help]
+
+  DEFAULT: Dry-run — shows what would be deleted without deleting anything.
+  Use --apply to actually delete.
+
+Options:
+  --apply           Actually delete (destructive, opt-in)
+  --dry-run         Show only, do not delete (default)
+  --only <group>    Clean one group only
+  --help            Show this help
+
+Groups (--only):
+  docker    Docker system prune, stopped containers, dangling images
+  xcode     DerivedData, iOS DeviceSupport, old simulator runtimes
+  brew      Homebrew cleanup -s
+  node      Clean npm/pnpm/bun caches; list orphaned node_modules
+  conda     conda clean --all
+  trash     Show Trash size / empty Trash
+
+Note: Docker volumes and node_modules are NEVER deleted automatically.
+      Volumes only after explicit confirmation (with --apply).
+
+Examples:
+  mac-clean                    # Dry-run: shows savings potential
+  mac-clean --apply            # Actually clean
+  mac-clean --only docker      # Clean Docker only (dry-run)
+  mac-clean --apply --only brew
+EOF
+            exit 0
+            ;;
+        *)
+            if [ "${ONLY_NEXT:-0}" = "1" ]; then
+                ONLY_GROUP="$arg"
+                ONLY_NEXT=0
+            fi
+            ;;
+    esac
+done
+
+# =============================================================================
+# Helper: skip group if --only is set and doesn't match
+# =============================================================================
+should_run_group() {
+    local group="$1"
+    [ -z "$ONLY_GROUP" ] && return 0
+    [ "$ONLY_GROUP" = "$group" ] && return 0
+    return 1
+}
+
+# =============================================================================
+# Helper: get directory size (macOS)
+# =============================================================================
+get_dir_size_human() {
+    local d="$1"
+    [ -d "$d" ] || { echo "0 MB"; return; }
+    du -sh "$d" 2>/dev/null | awk '{print $1}' || echo "?"
+}
+
+# =============================================================================
+# Summary
+# =============================================================================
+FREE_BEFORE=$(free_space_gb)
+
+step "=== mac-clean ==="
+if [ "$APPLY" = "0" ]; then
+    warn "DRY-RUN: Nothing will be deleted. Use --apply to actually clean."
+else
+    warn "APPLY mode: files will actually be deleted!"
+fi
+info "Free space before: ${FREE_BEFORE} GB"
+printf "\n" >&2
+
+# =============================================================================
+# 1. DOCKER
+# =============================================================================
+if should_run_group "docker"; then
+    step "Docker cleanup"
+
+    if ! have docker; then
+        warn "docker not found — skipping Docker cleanup."
+    elif ! docker_running; then
+        warn "Docker not running — skipping Docker cleanup."
+    else
+        # Current Docker storage usage
+        docker_df=$(docker system df 2>/dev/null || true)
+        info "Current Docker storage:"
+        printf '%s\n' "$docker_df" >&2
+
+        if [ "$APPLY" = "0" ]; then
+            info "[dry-run] Would run: docker system prune -f (stopped containers, dangling images, unused networks)"
+            info "[dry-run] Would NOT delete: Volumes (only with explicit confirmation)"
+        else
+            info "Cleaning stopped containers, dangling images, unused networks..."
+            docker system prune -f 2>/dev/null || warn "docker system prune failed"
+
+            # Volumes: only with confirmation
+            dangling_volumes=$(docker volume ls -f dangling=true -q 2>/dev/null || true)
+            if [ -n "$dangling_volumes" ]; then
+                volume_count=$(printf '%s\n' "$dangling_volumes" | wc -l | tr -d ' ')
+                warn "$volume_count orphaned volume(s) found."
+                if confirm "Delete orphaned volumes? (data loss possible — check first!)"; then
+                    docker volume prune -f 2>/dev/null || warn "Volume prune failed"
+                    ok "Orphaned volumes deleted."
+                else
+                    info "Volumes kept (no data lost)."
+                fi
+            else
+                info "No orphaned volumes."
+            fi
+
+            info "Docker storage after cleanup:"
+            docker system df 2>/dev/null >&2 || true
+            ok "Docker cleaned up."
+        fi
+    fi
+fi
+
+# =============================================================================
+# 2. XCODE
+# =============================================================================
+if should_run_group "xcode"; then
+    step "Cleaning Xcode artefacts"
+
+    DERIVED_DATA="$HOME/Library/Developer/Xcode/DerivedData"
+    IOS_SUPPORT="$HOME/Library/Developer/Xcode/iOS DeviceSupport"
+
+    derived_size=$(get_dir_size_human "$DERIVED_DATA")
+    ios_size=$(get_dir_size_human "$IOS_SUPPORT")
+
+    info "DerivedData: $derived_size ($DERIVED_DATA)"
+    info "iOS DeviceSupport: $ios_size ($IOS_SUPPORT)"
+
+    if [ "$APPLY" = "0" ]; then
+        info "[dry-run] Would delete: $DERIVED_DATA"
+        info "[dry-run] Would delete: $IOS_SUPPORT"
+        info "[dry-run] Would run: xcrun simctl delete unavailable"
+    else
+        if [ -d "$DERIVED_DATA" ]; then
+            rm -rf "$DERIVED_DATA"
+            ok "DerivedData deleted ($derived_size freed)"
+        fi
+        if [ -d "$IOS_SUPPORT" ]; then
+            rm -rf "$IOS_SUPPORT"
+            ok "iOS DeviceSupport deleted ($ios_size freed)"
+        fi
+        if have xcrun; then
+            info "Removing old simulator runtimes..."
+            xcrun simctl delete unavailable 2>/dev/null || warn "simctl delete unavailable failed"
+            ok "Unavailable simulators deleted"
+        fi
+    fi
+fi
+
+# =============================================================================
+# 3. HOMEBREW
+# =============================================================================
+if should_run_group "brew"; then
+    step "Cleaning Homebrew caches"
+
+    if ! have brew; then
+        warn "brew not found — skipping."
+    else
+        brew_cache="$HOME/Library/Caches/Homebrew"
+        brew_size=$(get_dir_size_human "$brew_cache")
+        info "Homebrew cache: $brew_size"
+
+        if [ "$APPLY" = "0" ]; then
+            info "[dry-run] Would run: brew cleanup -s"
+            # brew cleanup --dry-run for estimate
+            brew_estimate=$(brew cleanup -s --dry-run 2>/dev/null | tail -1 || echo "")
+            if [ -n "$brew_estimate" ]; then
+                info "Estimate: $brew_estimate"
+            fi
+        else
+            brew cleanup -s 2>/dev/null || warn "brew cleanup failed"
+            ok "Homebrew caches cleaned."
+        fi
+    fi
+fi
+
+# =============================================================================
+# 4. NODE (npm / pnpm / bun)
+# =============================================================================
+if should_run_group "node"; then
+    step "Cleaning Node caches"
+
+    # npm cache
+    if have npm; then
+        npm_cache=$(npm config get cache 2>/dev/null || echo "$HOME/.npm")
+        npm_size=$(get_dir_size_human "$npm_cache")
+        info "npm cache: $npm_size ($npm_cache)"
+        if [ "$APPLY" = "0" ]; then
+            info "[dry-run] Would run: npm cache clean --force"
+        else
+            npm cache clean --force 2>/dev/null || warn "npm cache clean failed"
+            ok "npm cache cleared."
+        fi
+    fi
+
+    # pnpm cache / store prune
+    if have pnpm; then
+        pnpm_store=$(pnpm store path 2>/dev/null || echo "")
+        if [ -n "$pnpm_store" ]; then
+            pnpm_size=$(get_dir_size_human "$pnpm_store")
+            info "pnpm store: $pnpm_size ($pnpm_store)"
+        fi
+        if [ "$APPLY" = "0" ]; then
+            info "[dry-run] Would run: pnpm store prune"
+        else
+            pnpm store prune 2>/dev/null || warn "pnpm store prune failed"
+            ok "pnpm store pruned."
+        fi
+    fi
+
+    # bun cache
+    BUN_CACHE="$HOME/.bun/install/cache"
+    if [ -d "$BUN_CACHE" ]; then
+        bun_size=$(get_dir_size_human "$BUN_CACHE")
+        info "bun cache: $bun_size ($BUN_CACHE)"
+        if [ "$APPLY" = "0" ]; then
+            info "[dry-run] Would delete: $BUN_CACHE"
+        else
+            rm -rf "$BUN_CACHE"
+            ok "bun cache cleared."
+        fi
+    fi
+
+    # uv cache
+    if have uv; then
+        uv_cache=$(uv cache dir 2>/dev/null || echo "$HOME/.cache/uv")
+        uv_size=$(get_dir_size_human "$uv_cache")
+        info "uv cache: $uv_size ($uv_cache)"
+        if [ "$APPLY" = "0" ]; then
+            info "[dry-run] Would run: uv cache clean"
+        else
+            uv cache clean 2>/dev/null || warn "uv cache clean failed"
+            ok "uv cache cleared."
+        fi
+    fi
+
+    # List orphaned node_modules (never delete — too dangerous)
+    step "Orphaned node_modules directories (list only, not deleted)"
+    info "Searching for node_modules in projects not touched for >${STALE_DAYS} days..."
+    stale_count=0
+    # find: -mtime +N = older than N days (directory modification time)
+    while IFS= read -r nm_dir; do
+        proj_dir=$(dirname "$nm_dir")
+        nm_size=$(get_dir_size_human "$nm_dir")
+        # Last git commit or directory mtime
+        last_commit=$(git -C "$proj_dir" log -1 --format="%ar" 2>/dev/null || echo "no git")
+        warn "STALE: $nm_dir ($nm_size, last commit: $last_commit)"
+        stale_count=$((stale_count + 1))
+    done < <(find "$DEV_DIR" -maxdepth 3 -name "node_modules" -type d -mtime "+$STALE_DAYS" 2>/dev/null | \
+             grep -v "node_modules/node_modules" || true)
+
+    if [ "$stale_count" -eq 0 ]; then
+        info "No orphaned node_modules found (threshold: ${STALE_DAYS} days)."
+    else
+        warn "$stale_count orphaned node_modules found. Check manually and delete if needed:"
+        info "  rm -rf <path>/node_modules  (then: npm ci / pnpm install)"
+    fi
+fi
+
+# =============================================================================
+# 5. CONDA
+# =============================================================================
+if should_run_group "conda"; then
+    step "Cleaning conda caches"
+
+    if ! have conda; then
+        warn "conda not found — skipping."
+    else
+        if [ "$APPLY" = "0" ]; then
+            info "[dry-run] Would run: conda clean --all -y"
+            conda clean --all --dry-run 2>/dev/null || true
+        else
+            conda clean --all -y 2>/dev/null || warn "conda clean failed"
+            ok "conda caches cleaned."
+        fi
+    fi
+fi
+
+# =============================================================================
+# 6. PAPIERKORB
+# =============================================================================
+if should_run_group "trash"; then
+    step "Trash"
+
+    trash_dir="$HOME/.Trash"
+    trash_size=$(get_dir_size_human "$trash_dir")
+    info "Trash size: $trash_size"
+
+    if [ "$APPLY" = "0" ]; then
+        info "[dry-run] Would empty Trash."
+    else
+        if have trash; then
+            # trash CLI respects macOS security dialog
+            warn "Emptying Trash via system (osascript)..."
+        fi
+        osascript -e 'tell app "Finder" to empty trash' 2>/dev/null || \
+            rm -rf "${trash_dir:?}/" 2>/dev/null || warn "Emptying Trash failed"
+        ok "Trash emptied ($trash_size freed)."
+    fi
+fi
+
+# =============================================================================
+# Zusammenfassung
+# =============================================================================
+printf "\n" >&2
+FREE_AFTER=$(free_space_gb)
+step "Summary"
+info "Free space before:  ${FREE_BEFORE} GB"
+info "Free space after:   ${FREE_AFTER} GB"
+GAINED=$((FREE_AFTER - FREE_BEFORE))
+if [ "$GAINED" -gt 0 ]; then
+    ok "${GAINED} GB freed!"
+elif [ "$APPLY" = "0" ]; then
+    info "Dry-run: no data was deleted. Use --apply to actually clean."
+fi

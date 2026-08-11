@@ -1,0 +1,130 @@
+# =============================================================================
+# .github/workflows/release.yml — Versioning and GitHub release
+#
+# Purpose:  Creates a GitHub release on a v* tag. Uses the [Unreleased]
+#           section from CHANGELOG.md as release notes.
+#           Runs validate as a prerequisite.
+# Changes:  Creates GitHub release (no code changes)
+# Usage:    git tag v0.2.0 && git push origin v0.2.0
+#
+# Versioning semantics for this repo:
+#   MAJOR  Setup no longer backwards-compatibly reproducible
+#          (level cut changed, module removed, Brewfile structure broken)
+#   MINOR  Tool added or module extended (new script, new category)
+#   PATCH  Versions bumped, documentation, bugfixes, consistency fixes
+# =============================================================================
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Pre-release validation
+    uses: ./.github/workflows/validate.yml
+    permissions:
+      contents: read
+
+  release:
+    name: Create GitHub release
+    runs-on: macos-latest
+    needs: validate
+    timeout-minutes: 10
+
+    steps:
+      # -----------------------------------------------------------------------
+      # 1. Checkout
+      # -----------------------------------------------------------------------
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # -----------------------------------------------------------------------
+      # 2. Extract and verify version from tag
+      # -----------------------------------------------------------------------
+      - name: Check version
+        id: version
+        run: |
+          tag="${GITHUB_REF#refs/tags/}"
+          version="${tag#v}"
+
+          echo "Tag: $tag"
+          echo "Version: $version"
+
+          # VERSION file must match the tag
+          if [ -f VERSION ]; then
+            file_version=$(cat VERSION | tr -d '[:space:]')
+            if [ "$file_version" != "$version" ]; then
+              echo "ERROR: VERSION file ($file_version) does not match tag ($version)"
+              exit 1
+            fi
+          fi
+
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      # -----------------------------------------------------------------------
+      # 3. Extract release notes from CHANGELOG.md
+      # -----------------------------------------------------------------------
+      - name: Extract release notes from CHANGELOG.md
+        id: notes
+        run: |
+          if [ ! -f CHANGELOG.md ]; then
+            echo "No CHANGELOG.md found — using empty release notes"
+            echo "notes=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Extract the [Unreleased] section
+          # From ## [Unreleased] to the next ## [
+          notes=$(awk '
+            /^## \[Unreleased\]/ { in_section=1; next }
+            in_section && /^## \[/ { exit }
+            in_section { print }
+          ' CHANGELOG.md | sed '/^[[:space:]]*$/d' | head -200)
+
+          if [ -z "$notes" ]; then
+            notes="No entries in the [Unreleased] section."
+          fi
+
+          # Escape multi-line output for GitHub Actions
+          {
+            echo "notes<<EOFNOTES"
+            echo "$notes"
+            echo "EOFNOTES"
+          } >> "$GITHUB_OUTPUT"
+
+      # -----------------------------------------------------------------------
+      # 4. Create GitHub release
+      # -----------------------------------------------------------------------
+      - name: Create GitHub release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="${{ steps.version.outputs.tag }}"
+          version="${{ steps.version.outputs.version }}"
+
+          # Check whether release already exists
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "Release $tag already exists — updating"
+            gh release edit "$tag" \
+              --title "kickoff-ai $tag" \
+              --notes "${{ steps.notes.outputs.notes }}"
+          else
+            gh release create "$tag" \
+              --title "kickoff-ai $tag" \
+              --notes "${{ steps.notes.outputs.notes }}" \
+              --verify-tag
+          fi
+
+          echo "Release $tag created/updated"

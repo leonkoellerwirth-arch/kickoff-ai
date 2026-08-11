@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+    "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+    dev.kickoff.doctor.plist
+    Weekly system health check via doctor.sh (Monday 08:00).
+    Mode: --report (writes Markdown to local/doctor-report.md) + --no-exit.
+    Log: ~/Library/Logs/kickoff/doctor.log
+    Install: automation/launchd/install-launchd.sh
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>dev.kickoff.doctor</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>__REPO_ROOT__/doctor.sh</string>
+        <string>--report</string>
+        <string>--no-exit</string>
+    </array>
+
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Weekday</key>
+        <integer>1</integer>
+        <key>Hour</key>
+        <integer>8</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>StandardOutPath</key>
+    <string>__HOME__/Library/Logs/kickoff/doctor.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>__HOME__/Library/Logs/kickoff/doctor.log</string>
+
+    <key>Nice</key>
+    <integer>10</integer>
+
+    <key>LowPriorityIO</key>
+    <true/>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <key>HOME</key>
+        <string>__HOME__</string>
+    </dict>
+</dict>
+</plist>

@@ -1,0 +1,226 @@
+# =============================================================================
+# .github/workflows/up2date.yml — Weekly currency check
+#
+# Purpose:  Checks all registry entries against upstream weekly,
+#           writes updated versions as a pull request,
+#           opens issues for sunset candidates and review due items.
+# Changes:  Writes PR with version_seen/reviewed/STATE.json changes.
+#           Opens/updates an issue for findings.
+#           NEVER changes: status, installed software.
+# Requires: GITHUB_TOKEN (provided automatically), optional GH_TOKEN for
+#           higher rate limits on the GitHub release check.
+# Usage:    schedule (Monday 08:00 UTC) or manually via workflow_dispatch
+#
+# Why peter-evans/create-pull-request instead of gh CLI:
+#   The action handles branch management and PR deduplication;
+#   with multiple weekly runs without a merge the same branch/PR is updated
+#   instead of creating duplicates. The gh CLI would require more complex
+#   shell logic for that.
+# =============================================================================
+name: up2date
+
+on:
+  schedule:
+    # Monday 08:00 UTC
+    - cron: "0 8 * * 1"
+  workflow_dispatch:
+    inputs:
+      level:
+        description: "Only entries from level (0-3, default: all)"
+        required: false
+        default: ""
+        type: string
+      dry_run:
+        description: "Dry run (no PR, no issue)"
+        required: false
+        default: "false"
+        type: boolean
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: up2date
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: Currency check
+    runs-on: macos-latest
+    timeout-minutes: 30
+
+    steps:
+      # -----------------------------------------------------------------------
+      # 1. Checkout (full, for PR creation)
+      # -----------------------------------------------------------------------
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # -----------------------------------------------------------------------
+      # 2. Install dependencies
+      # -----------------------------------------------------------------------
+      - name: Install dependencies
+        run: |
+          brew install yq jq shellcheck 2>/dev/null || true
+
+      # -----------------------------------------------------------------------
+      # 3. Upstream check (JSON + Markdown report)
+      # -----------------------------------------------------------------------
+      - name: Upstream check
+        id: check
+        env:
+          CI: "1"
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          level_flag=""
+          if [ -n "${{ inputs.level }}" ]; then
+            level_flag="--level ${{ inputs.level }}"
+          fi
+
+          # Run check; exit code 1 = drift found (expected)
+          # shellcheck disable=SC2086
+          automation/bin/up2date check \
+            $level_flag \
+            --json > /tmp/up2date-result.json 2>/dev/null || true
+
+          automation/bin/up2date check \
+            $level_flag \
+            --markdown > /tmp/up2date-report.md 2>/dev/null || true
+
+          # Count findings
+          updates=$(jq '[.[] | select(.category == "update")] | length' /tmp/up2date-result.json 2>/dev/null || echo "0")
+          sunsets=$(jq '[.[] | select(.category == "sunset")] | length' /tmp/up2date-result.json 2>/dev/null || echo "0")
+          reviews=$(jq '[.[] | select(.category == "review")] | length' /tmp/up2date-result.json 2>/dev/null || echo "0")
+          total=$((updates + sunsets + reviews))
+
+          echo "updates=$updates" >> "$GITHUB_OUTPUT"
+          echo "sunsets=$sunsets" >> "$GITHUB_OUTPUT"
+          echo "reviews=$reviews" >> "$GITHUB_OUTPUT"
+          echo "total=$total" >> "$GITHUB_OUTPUT"
+
+          echo "Findings: $updates updates, $sunsets sunset candidates, $reviews review due"
+
+      # -----------------------------------------------------------------------
+      # 4. Write back versions
+      # -----------------------------------------------------------------------
+      - name: Write back versions (--apply-versions)
+        env:
+          CI: "1"
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          automation/bin/up2date --apply-versions 2>/dev/null || true
+
+      # -----------------------------------------------------------------------
+      # 5. Pull request for version updates
+      #    Branch: chore/up2date-<date>
+      #    Only when tools.yaml or STATE.json have changed
+      # -----------------------------------------------------------------------
+      - name: Create pull request (version update)
+        if: inputs.dry_run != 'true'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "chore: version update via up2date (${{ github.run_id }})"
+          branch: chore/up2date-${{ github.run_id }}
+          delete-branch: true
+          title: "chore: weekly version update (up2date)"
+          body: |
+            ## Automated version update
+
+            This PR was created by `.github/workflows/up2date.yml`.
+            It contains only changes to `version_seen`, `reviewed`, and `STATE.json`.
+            **No `status` was changed. No software was installed or uninstalled.**
+
+            ${{ steps.check.outputs.updates }} updates available.
+
+            ---
+
+            ${{ steps.check.outputs.total > 0 && 'Full report:' || 'All entries current.' }}
+
+            <details>
+            <summary>Report details</summary>
+
+            See `/tmp/up2date-report.md` in the workflow output.
+
+            </details>
+
+            ---
+            *Generated by `automation/bin/up2date --apply-versions`*
+          labels: "chore,automated"
+          add-paths: |
+            manifests/tools.yaml
+            manifests/STATE.json
+
+      # -----------------------------------------------------------------------
+      # 6. Issue for sunset candidates and review due items
+      #    Fixed identifier in title prevents duplicates
+      # -----------------------------------------------------------------------
+      - name: Create/update issue (sunset + review)
+        if: |
+          inputs.dry_run != 'true' &&
+          (steps.check.outputs.sunsets > 0 || steps.check.outputs.reviews > 0)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          issue_title="up2date: action required — sunset candidates & review due"
+          issue_label="up2date"
+
+          # Extract issue body from the Markdown report
+          report_body=$(cat /tmp/up2date-report.md 2>/dev/null || echo "Report not available")
+
+          body="## up2date — action required
+
+          **Date:** $(date +%Y-%m-%d)
+          **Sunset candidates:** ${{ steps.check.outputs.sunsets }}
+          **Review due:** ${{ steps.check.outputs.reviews }}
+
+          These items require a human decision.
+          Status changes are NOT made automatically.
+
+          ### Recommended commands
+
+          \`\`\`bash
+          # Overview
+          automation/bin/sunset list --due
+
+          # Propose individual sunset
+          automation/bin/sunset propose <id> --reason \"reason\"
+
+          # Confirm sunset (after grace period)
+          automation/bin/sunset confirm <id>
+          \`\`\`
+
+          ### Full report
+
+          \`\`\`
+          $report_body
+          \`\`\`
+
+          ---
+          *Generated by \`.github/workflows/up2date.yml\`*"
+
+          # Find existing issue (by fixed identifier in title)
+          existing_issue=$(gh issue list \
+            --label "$issue_label" \
+            --state open \
+            --json number,title \
+            --jq ".[] | select(.title == \"$issue_title\") | .number" \
+            2>/dev/null | head -1 || echo "")
+
+          if [ -n "$existing_issue" ]; then
+            # Update existing issue
+            gh issue comment "$existing_issue" --body "$body"
+            echo "Issue #$existing_issue updated"
+          else
+            # Create new issue (create label if needed)
+            gh label create "$issue_label" --color "0075ca" --description "up2date automation" 2>/dev/null || true
+            gh issue create \
+              --title "$issue_title" \
+              --body "$body" \
+              --label "$issue_label"
+            echo "New issue created"
+          fi

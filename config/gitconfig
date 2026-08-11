@@ -1,0 +1,158 @@
+# =============================================================================
+# ~/.gitconfig — Git configuration
+#
+# Contains ONLY machine-independent settings.
+# Personal data (user.name, user.email, SSH signing) are set via
+# module 08 (08-git-ssh.sh) directly and optionally overridden in
+# ~/.gitconfig.local.
+# =============================================================================
+
+# =============================================================================
+# Basic settings
+# =============================================================================
+[core]
+    excludesfile = ~/.gitignore_global
+    autocrlf = input
+    editor = vim
+    fsmonitor = true
+    untrackedCache = true
+
+[init]
+    defaultBranch = main
+
+[pull]
+    rebase = true
+
+[push]
+    autoSetupRemote = true
+    default = current
+
+[fetch]
+    prune = true
+
+[merge]
+    conflictstyle = diff3
+
+[diff]
+    colorMoved = default
+    algorithm = histogram
+
+[rebase]
+    autoSquash = true
+    autoStash = true
+
+[rerere]
+    enabled = true
+
+[column]
+    ui = auto
+
+# =============================================================================
+# Branch display
+# =============================================================================
+[branch]
+    sort = -committerdate
+
+[tag]
+    sort = -version:refname
+
+# =============================================================================
+# GitHub Credential Helper
+# =============================================================================
+[credential]
+    helper = osxkeychain
+
+[credential "https://github.com"]
+    helper =
+    helper = !/opt/homebrew/bin/gh auth git-credential
+
+[credential "https://gist.github.com"]
+    helper =
+    helper = !/opt/homebrew/bin/gh auth git-credential
+
+# =============================================================================
+# Git LFS
+# =============================================================================
+[filter "lfs"]
+    process = git-lfs filter-process
+    required = true
+    clean = git-lfs clean -- %f
+    smudge = git-lfs smudge -- %f
+
+# =============================================================================
+# Colors
+# =============================================================================
+[color]
+    ui = auto
+
+[color "diff"]
+    meta = yellow bold
+    commit = green bold
+    frag = magenta bold
+    old = red bold
+    new = green bold
+    whitespace = red reverse
+
+# =============================================================================
+# Aliases
+# =============================================================================
+[alias]
+    # Pretty log graph
+    lg = log --graph --pretty=format:'%Cred%h%Creset -%C(yellow)%d%Creset %s %Cgreen(%cr) %C(bold blue)<%an>%Creset %cd' --abbrev-commit --date=relative --date-order
+
+    # Add + Commit + Push (main)
+    gcap = "!f() { git add . && git commit -m \"$1\" && git push origin main; }; f"
+
+    # Add + Commit + Push (current branch)
+    gacp = "!git-gacp"
+
+    # Create new branch from main
+    new-branch = "!git checkout main && git pull && git checkout -b"
+
+    # Add all + Commit
+    cm = "!git add -A && git commit -m"
+
+    # Clean up branch
+    cleanup = "!f() { git checkout main && git pull && git branch -d $1; }; f"
+
+    # Push current branch
+    push-current = "!git push origin $(git symbolic-ref --short HEAD)"
+
+    # Show all aliases
+    show-aliases = "!git config --get-regexp alias"
+
+    # Undo last commit (changes are kept)
+    undo = reset HEAD~1 --soft
+
+    # Show staged changes
+    staged = diff --cached
+
+    # Stash with message
+    save = stash push -m
+
+# =============================================================================
+# SSH commit signing
+#
+# These settings are COMMENTED OUT because the SSH key is created by
+# module 08 (08-git-ssh.sh).
+# After key creation, enable in ~/.gitconfig.local:
+#
+# [user]
+#     signingkey = ~/.ssh/id_ed25519
+#
+# [commit]
+#     gpgsign = true
+#
+# [gpg]
+#     format = ssh
+#
+# [gpg "ssh"]
+#     allowedSignersFile = ~/.config/git/allowed_signers
+# =============================================================================
+
+# =============================================================================
+# Machine-specific overrides (user.name, user.email, signing)
+# ~/.gitconfig.local is populated by module 08 (git config --global).
+# =============================================================================
+[include]
+    path = ~/.gitconfig.local

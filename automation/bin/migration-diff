@@ -1,0 +1,604 @@
+#!/usr/bin/env bash
+# =============================================================================
+# automation/bin/migration-diff — Compare old machine vs. new machine
+#
+# Purpose:  Reads a profile.json (created by status-quo.sh) and compares it
+#           with the CURRENT state of this machine.
+#           Shows: what is still missing, what is new, which versions differ,
+#           and what was intentionally not carried over (sunset/deprecated
+#           in manifests/tools.yaml).
+#           At the end: progress count and concrete catch-up commands.
+#
+# Changes:  Nothing — read-only (report written to local/)
+# Requires: python3 (always), jq (recommended), yq v4+ (optional, for tools.yaml)
+# Usage:    automation/bin/migration-diff [options]
+#           or via automation/bin path after bootstrap.sh installation
+#
+# Flags:
+#   --profile <file>   Specify a profile.json directly (default: newest under
+#                      local/status-quo/)
+#   --markdown         Write report to local/migration-diff.md
+#   --only <section>   Check only this section (brew|npm|vscode|ollama|versions)
+#   --help             This help
+#
+# Exit codes:
+#   0  Nothing open (all items carried over or intentionally dropped)
+#   1  Open items remaining
+# =============================================================================
+set -euo pipefail
+
+AUTOMATION_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$AUTOMATION_DIR/lib-automation.sh"
+
+REPO_ROOT="$_REPO_ROOT"
+
+# =============================================================================
+# Argument parsing
+# =============================================================================
+PROFILE_ARG=""
+WRITE_MARKDOWN=0
+ONLY_SECTION=""
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --profile)  shift; PROFILE_ARG="${1:-}" ;;
+        --markdown) WRITE_MARKDOWN=1 ;;
+        --only)     shift; ONLY_SECTION="${1:-}" ;;
+        --help|-h)
+            cat >&2 <<'HELP'
+Usage: migration-diff [options]
+
+  Compares a profile of the old machine (profile.json from status-quo.sh)
+  with the current state of this machine.
+
+Options:
+  --profile <file>    Specify profile.json directly
+                      (default: newest under local/status-quo/)
+  --markdown          Write report to local/migration-diff.md
+  --only <section>    Check only one section:
+                      brew | npm | vscode | ollama | versions
+  --help              This help
+
+Report sections:
+  still missing       Was on old machine, not present here
+  newly added         Present here, was not on old machine
+  version differences Present on both, different version
+  intentionally dropped Status 'sunset' or 'deprecated' in tools.yaml
+
+Exit code:
+  0  All items carried over (or intentionally dropped)
+  1  Open items remaining
+
+Examples:
+  automation/bin/migration-diff
+  automation/bin/migration-diff --profile /tmp/profile.json
+  automation/bin/migration-diff --markdown
+  automation/bin/migration-diff --only brew
+HELP
+            exit 0
+            ;;
+        *) err "Unknown option: $1 (--help for help)" ;;
+    esac
+    shift
+done
+
+# =============================================================================
+# Locate profile.json
+# =============================================================================
+PROFILE_FILE=""
+
+if [ -n "$PROFILE_ARG" ]; then
+    if [ ! -f "$PROFILE_ARG" ]; then
+        err "Profile file not found: $PROFILE_ARG"
+    fi
+    PROFILE_FILE="$PROFILE_ARG"
+else
+    # Newest profile.json under local/status-quo/
+    _SQ_DIR="$REPO_ROOT/local/status-quo"
+    if [ -d "$_SQ_DIR" ]; then
+        PROFILE_FILE=$(find "$_SQ_DIR" -name "profile.json" 2>/dev/null \
+            | sort | tail -1)
+    fi
+    if [ -z "$PROFILE_FILE" ]; then
+        err "No profile.json found under $REPO_ROOT/local/status-quo/.
+First, on the old machine: ./status-quo.sh
+Then copy the profile here and run: ./prepare.sh --profile <path>/profile.json"
+    fi
+fi
+
+info "Profile: $PROFILE_FILE"
+
+# Check JSON readability
+if ! python3 -c "import json; json.load(open('$PROFILE_FILE'))" 2>/dev/null; then
+    err "profile.json is not valid JSON: $PROFILE_FILE"
+fi
+
+# =============================================================================
+# Helper: read JSON field as line list
+# =============================================================================
+_profile_lines() {
+    local jq_path="$1"
+    python3 - "$PROFILE_FILE" "$jq_path" <<'PYEOF' 2>/dev/null || echo ""
+import json, sys
+
+with open(sys.argv[1]) as f:
+    d = json.load(f)
+
+# Traverse path like ".brew.formulae"
+path = sys.argv[2].lstrip(".").split(".")
+val = d
+for key in path:
+    if isinstance(val, dict):
+        val = val.get(key, [])
+    else:
+        val = []
+
+if isinstance(val, list):
+    for item in val:
+        if item:
+            print(item)
+elif isinstance(val, str) and val:
+    print(val)
+PYEOF
+}
+
+_profile_field() {
+    local jq_path="$1"
+    python3 - "$PROFILE_FILE" "$jq_path" <<'PYEOF' 2>/dev/null || echo ""
+import json, sys
+
+with open(sys.argv[1]) as f:
+    d = json.load(f)
+
+path = sys.argv[2].lstrip(".").split(".")
+val = d
+for key in path:
+    if isinstance(val, dict):
+        val = val.get(key, "")
+    else:
+        val = ""
+
+print(val if val is not None else "")
+PYEOF
+}
+
+# =============================================================================
+# Load sunset/deprecated IDs from tools.yaml (via yq)
+# =============================================================================
+SUNSET_IDS=""
+SUNSET_NOTE=""
+if command -v yq >/dev/null 2>&1; then
+    _TOOLS_YAML="$REPO_ROOT/manifests/tools.yaml"
+    if [ -f "$_TOOLS_YAML" ]; then
+        SUNSET_IDS=$(yq '.[] | select(.status == "sunset" or .status == "deprecated") | .ref' \
+            "$_TOOLS_YAML" 2>/dev/null | grep -v '^null$' | sort || echo "")
+        SUNSET_NOTE="(${REPO_ROOT}/manifests/tools.yaml)"
+    fi
+else
+    warn "yq not found — tools.yaml cannot be evaluated" \
+        "brew install yq"
+    SUNSET_NOTE="(yq not installed — install: brew install yq)"
+fi
+
+# Check whether an item is in the SUNSET_IDS list
+_is_sunset() {
+    local item="$1"
+    [ -z "$SUNSET_IDS" ] && return 1
+    printf "%s\n" "$SUNSET_IDS" | grep -qxF "$item"
+}
+
+# =============================================================================
+# Comparison helper
+# =============================================================================
+# Input:  two newline-separated sorted lists
+# Output: three blocks (missing|new|both) via temporary files
+
+_diff_lists() {
+    local old_list="$1"
+    local new_list="$2"
+    local tmp_old tmp_new
+    tmp_old=$(mktemp /tmp/mig_old.XXXXXX)
+    tmp_new=$(mktemp /tmp/mig_new.XXXXXX)
+    printf "%s\n" "$old_list" | grep -v '^$' | sort > "$tmp_old"
+    printf "%s\n" "$new_list" | grep -v '^$' | sort > "$tmp_new"
+    # Output results as TAB-separated lines: STATUS<TAB>ITEM
+    comm -23 "$tmp_old" "$tmp_new" | awk '{print "MISSING\t" $0}'
+    comm -13 "$tmp_old" "$tmp_new" | awk '{print "NEW\t" $0}'
+    rm -f "$tmp_old" "$tmp_new"
+}
+
+# =============================================================================
+# Tracking variables
+# =============================================================================
+_TOTAL=0
+_CARRIED=0    # Carried over (present on both)
+_SUNSET=0     # Intentionally dropped
+_OPEN=0       # Still missing (open)
+_NEW=0        # Newly added
+
+_REPORT_MISSING=""
+_REPORT_NEW=""
+_REPORT_SUNSET=""
+_REPORT_VERSION=""
+
+# =============================================================================
+# Header
+# =============================================================================
+printf "\n%s%s" "$_BOLD" "$_CYAN" >&2
+printf "╔═══════════════════════════════════════════════════╗\n" >&2
+printf "║  migration-diff — old → new                      ║\n" >&2
+printf "║  Profile: %-40s ║\n" "$(basename "$PROFILE_FILE")" >&2
+printf "║  %-49s ║\n" "$(date '+%Y-%m-%d %H:%M:%S')" >&2
+printf "╚═══════════════════════════════════════════════════╝\n\n%s" "$_RESET" >&2
+
+_OLD_MACOS=$(_profile_field ".machine.macos")
+_OLD_ARCH=$(_profile_field ".machine.arch")
+_OLD_RAM=$(_profile_field ".machine.ram_gb")
+info "Old machine: macOS $_OLD_MACOS · $_OLD_ARCH · ${_OLD_RAM} GB RAM"
+info "This machine: macOS $(sw_vers -productVersion) · $(uname -m)"
+printf "\n" >&2
+
+# =============================================================================
+# Section: HOMEBREW
+# =============================================================================
+_should_run() { [ -z "$ONLY_SECTION" ] || [ "$ONLY_SECTION" = "$1" ]; }
+
+if _should_run "brew"; then
+    step "Homebrew formulae"
+
+    _OLD_FORMULAE=$(_profile_lines ".brew.formulae")
+    _NEW_FORMULAE=$(brew leaves 2>/dev/null | sort || echo "")
+
+    _SEC_MISSING="" _SEC_NEW="" _SEC_SUNSET=""
+
+    while IFS='	' read -r status item; do
+        item=$(printf "%s" "$item" | tr -d '[:space:]')
+        [ -z "$item" ] && continue
+        _TOTAL=$((_TOTAL + 1))
+        if [ "$status" = "MISSING" ]; then
+            if _is_sunset "$item"; then
+                _SUNSET=$((_SUNSET + 1))
+                _SEC_SUNSET="${_SEC_SUNSET}  - \`${item}\` ${SUNSET_NOTE}
+"
+                _REPORT_SUNSET="${_REPORT_SUNSET}brew:${item}
+"
+            else
+                _OPEN=$((_OPEN + 1))
+                _SEC_MISSING="${_SEC_MISSING}  - \`${item}\`  →  \`brew install ${item}\`
+"
+                _REPORT_MISSING="${_REPORT_MISSING}brew:${item}
+"
+            fi
+        elif [ "$status" = "NEW" ]; then
+            _NEW=$((_NEW + 1))
+            _SEC_NEW="${_SEC_NEW}  - \`${item}\`
+"
+            _REPORT_NEW="${_REPORT_NEW}brew:${item}
+"
+        fi
+    done <<EOF
+$(_diff_lists "$_OLD_FORMULAE" "$_NEW_FORMULAE")
+EOF
+
+    # Carried over
+    _n_old=$(printf "%s\n" "$_OLD_FORMULAE" | grep -c . || echo 0)
+    _n_new=$(printf "%s\n" "$_NEW_FORMULAE" | grep -c . || echo 0)
+    _n_missing=$(printf "%s\n" "$_SEC_MISSING" | grep -c . || echo 0)
+    _carried_here=$((_n_old - _OPEN - _SUNSET))
+    [ "$_carried_here" -lt 0 ] && _carried_here=0
+    _CARRIED=$((_CARRIED + _carried_here))
+
+    [ -n "$_SEC_MISSING" ] && { warn "Missing (brew formulae):"; printf "%s\n" "$_SEC_MISSING" >&2; }
+    [ -n "$_SEC_SUNSET"  ] && { info "Intentionally dropped (brew):"; printf "%s\n" "$_SEC_SUNSET" >&2; }
+    [ -n "$_SEC_NEW"     ] && { info "Newly added (brew):"; printf "%s\n" "$_SEC_NEW" >&2; }
+    [ -z "$_SEC_MISSING" ] && [ -z "$_SEC_NEW" ] && ok "No deviation"
+
+    step "Homebrew casks"
+
+    _OLD_CASKS=$(_profile_lines ".brew.casks")
+    _NEW_CASKS=$(brew list --cask 2>/dev/null | sort || echo "")
+    _SEC_MISSING="" _SEC_NEW="" _SEC_CASK_SUNSET=""
+
+    while IFS='	' read -r status item; do
+        item=$(printf "%s" "$item" | tr -d '[:space:]')
+        [ -z "$item" ] && continue
+        _TOTAL=$((_TOTAL + 1))
+        if [ "$status" = "MISSING" ]; then
+            if _is_sunset "$item"; then
+                _SUNSET=$((_SUNSET + 1))
+                _SEC_CASK_SUNSET="${_SEC_CASK_SUNSET}  - \`${item}\`
+"
+            else
+                _OPEN=$((_OPEN + 1))
+                _SEC_MISSING="${_SEC_MISSING}  - \`${item}\`  →  \`brew install --cask ${item}\`
+"
+                _REPORT_MISSING="${_REPORT_MISSING}cask:${item}
+"
+            fi
+        elif [ "$status" = "NEW" ]; then
+            _NEW=$((_NEW + 1))
+            _SEC_NEW="${_SEC_NEW}  - \`${item}\`
+"
+            _REPORT_NEW="${_REPORT_NEW}cask:${item}
+"
+        fi
+    done <<EOF
+$(_diff_lists "$_OLD_CASKS" "$_NEW_CASKS")
+EOF
+
+    [ -n "$_SEC_MISSING"       ] && { warn "Missing (casks):"; printf "%s\n" "$_SEC_MISSING" >&2; }
+    [ -n "$_SEC_CASK_SUNSET"   ] && { info "Intentionally dropped (casks):"; printf "%s\n" "$_SEC_CASK_SUNSET" >&2; }
+    [ -n "$_SEC_NEW"           ] && { info "Newly added (casks):"; printf "%s\n" "$_SEC_NEW" >&2; }
+    [ -z "$_SEC_MISSING" ] && [ -z "$_SEC_NEW" ] && ok "No deviation"
+fi
+
+# =============================================================================
+# Section: NPM GLOBALS
+# =============================================================================
+if _should_run "npm"; then
+    step "npm globals"
+
+    _OLD_NPM=$(_profile_lines ".npm.global")
+    _NEW_NPM=$(npm list -g --depth=0 --parseable 2>/dev/null \
+        | awk -F/ 'NR>1{print $NF}' | sort || echo "")
+
+    # Strip version from package names for name comparison
+    _strip_version() {
+        # "package@1.0.0" → "package", "@scope/pkg@1.0.0" → "@scope/pkg"
+        printf "%s\n" "$1" | sed 's/@[0-9][^@]*$//'
+    }
+
+    _OLD_NPM_NAMES=$(printf "%s\n" "$_OLD_NPM" | while IFS= read -r p; do _strip_version "$p"; done | sort)
+    _NEW_NPM_NAMES=$(printf "%s\n" "$_NEW_NPM" | while IFS= read -r p; do _strip_version "$p"; done | sort)
+
+    _SEC_MISSING="" _SEC_NEW=""
+
+    while IFS='	' read -r status item; do
+        item=$(printf "%s" "$item" | tr -d '[:space:]')
+        [ -z "$item" ] && continue
+        _TOTAL=$((_TOTAL + 1))
+        if [ "$status" = "MISSING" ]; then
+            _OPEN=$((_OPEN + 1))
+            _SEC_MISSING="${_SEC_MISSING}  - \`${item}\`  →  \`npm install -g ${item}\`
+"
+            _REPORT_MISSING="${_REPORT_MISSING}npm:${item}
+"
+        elif [ "$status" = "NEW" ]; then
+            _NEW=$((_NEW + 1))
+            _SEC_NEW="${_SEC_NEW}  - \`${item}\`
+"
+            _REPORT_NEW="${_REPORT_NEW}npm:${item}
+"
+        fi
+    done <<EOF
+$(_diff_lists "$_OLD_NPM_NAMES" "$_NEW_NPM_NAMES")
+EOF
+
+    [ -n "$_SEC_MISSING" ] && { warn "Missing (npm globals):"; printf "%s\n" "$_SEC_MISSING" >&2; }
+    [ -n "$_SEC_NEW"     ] && { info "Newly added (npm globals):"; printf "%s\n" "$_SEC_NEW" >&2; }
+    [ -z "$_SEC_MISSING" ] && [ -z "$_SEC_NEW" ] && ok "No deviation"
+fi
+
+# =============================================================================
+# Section: VS CODE EXTENSIONS
+# =============================================================================
+if _should_run "vscode"; then
+    step "VS Code extensions"
+
+    _OLD_EXT=$(_profile_lines ".vscode.extensions")
+    _CODE_BIN=""
+    if have code; then
+        _CODE_BIN="code"
+    elif [ -f "/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code" ]; then
+        _CODE_BIN="/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code"
+    fi
+
+    if [ -z "$_CODE_BIN" ]; then
+        warn "VS Code not found — extensions cannot be checked"
+    else
+        _NEW_EXT=$("$_CODE_BIN" --list-extensions 2>/dev/null | sort || echo "")
+        _SEC_MISSING="" _SEC_NEW=""
+
+        while IFS='	' read -r status item; do
+            item=$(printf "%s" "$item" | tr -d '[:space:]')
+            [ -z "$item" ] && continue
+            _TOTAL=$((_TOTAL + 1))
+            if [ "$status" = "MISSING" ]; then
+                _OPEN=$((_OPEN + 1))
+                _SEC_MISSING="${_SEC_MISSING}  - \`${item}\`  →  \`code --install-extension ${item}\`
+"
+                _REPORT_MISSING="${_REPORT_MISSING}vscode:${item}
+"
+            elif [ "$status" = "NEW" ]; then
+                _NEW=$((_NEW + 1))
+                _SEC_NEW="${_SEC_NEW}  - \`${item}\`
+"
+                _REPORT_NEW="${_REPORT_NEW}vscode:${item}
+"
+            fi
+        done <<EOF
+$(_diff_lists "$_OLD_EXT" "$_NEW_EXT")
+EOF
+
+        [ -n "$_SEC_MISSING" ] && { warn "Missing (VS Code extensions):"; printf "%s\n" "$_SEC_MISSING" >&2; }
+        [ -n "$_SEC_NEW"     ] && { info "Newly added (extensions):"; printf "%s\n" "$_SEC_NEW" >&2; }
+        [ -z "$_SEC_MISSING" ] && [ -z "$_SEC_NEW" ] && ok "No deviation"
+    fi
+fi
+
+# =============================================================================
+# Section: OLLAMA MODELS
+# =============================================================================
+if _should_run "ollama"; then
+    step "Ollama models"
+
+    _OLD_MODELS=$(_profile_lines ".ollama.models")
+
+    if ! have ollama; then
+        warn "Ollama not installed — models cannot be checked"
+    elif ! curl -sf --max-time 3 http://localhost:11434/api/tags >/dev/null 2>&1; then
+        warn "Ollama not reachable — start with: ollama serve"
+    else
+        _NEW_MODELS=$(ollama list 2>/dev/null | awk 'NR>1{print $1}' | sort || echo "")
+        _SEC_MISSING="" _SEC_NEW=""
+
+        while IFS='	' read -r status item; do
+            item=$(printf "%s" "$item" | tr -d '[:space:]')
+            [ -z "$item" ] && continue
+            _TOTAL=$((_TOTAL + 1))
+            if [ "$status" = "MISSING" ]; then
+                _OPEN=$((_OPEN + 1))
+                _SEC_MISSING="${_SEC_MISSING}  - \`${item}\`  →  \`ollama pull ${item}\`
+"
+                _REPORT_MISSING="${_REPORT_MISSING}ollama:${item}
+"
+            elif [ "$status" = "NEW" ]; then
+                _NEW=$((_NEW + 1))
+                _SEC_NEW="${_SEC_NEW}  - \`${item}\`
+"
+                _REPORT_NEW="${_REPORT_NEW}ollama:${item}
+"
+            fi
+        done <<EOF
+$(_diff_lists "$_OLD_MODELS" "$_NEW_MODELS")
+EOF
+
+        [ -n "$_SEC_MISSING" ] && { warn "Missing (Ollama models):"; printf "%s\n" "$_SEC_MISSING" >&2; }
+        [ -n "$_SEC_NEW"     ] && { info "Newly added (models):"; printf "%s\n" "$_SEC_NEW" >&2; }
+        [ -z "$_SEC_MISSING" ] && [ -z "$_SEC_NEW" ] && ok "No deviation"
+    fi
+fi
+
+# =============================================================================
+# Section: VERSIONS
+# =============================================================================
+if _should_run "versions"; then
+    step "Version state"
+
+    _compare_version() {
+        local label="$1"
+        local old_ver="$2"
+        local new_ver="$3"
+        [ -z "$old_ver" ] && [ -z "$new_ver" ] && return 0
+        [ -z "$new_ver" ] && new_ver="not installed"
+        [ -z "$old_ver" ] && { info "$label: only on new machine ($new_ver)"; return 0; }
+
+        if [ "$old_ver" = "$new_ver" ]; then
+            printf "  %s[OK  ]%s  %-20s  %s\n" "$_GREEN" "$_RESET" "$label" "$new_ver" >&2
+            _CARRIED=$((_CARRIED + 1))
+        else
+            printf "  %s[DIFF]%s  %-20s  old: %-20s  new: %s\n" \
+                "$_YELLOW" "$_RESET" "$label" "$old_ver" "$new_ver" >&2
+            _REPORT_VERSION="${_REPORT_VERSION}${label}: old=${old_ver} new=${new_ver}
+"
+        fi
+        _TOTAL=$((_TOTAL + 1))
+    }
+
+    _compare_version "Node.js" "$(_profile_field ".versions.node")" \
+        "$(node --version 2>/dev/null || echo "")"
+    _compare_version "Python" "$(_profile_field ".versions.python")" \
+        "$(python3 --version 2>/dev/null | awk '{print $2}' || echo "")"
+    _compare_version "uv" "$(_profile_field ".versions.uv")" \
+        "$(uv --version 2>/dev/null | awk '{print $2}' || echo "")"
+    _compare_version "Java" "$(_profile_field ".versions.java")" \
+        "$(java -version 2>&1 | head -1 | grep -oE '"[^"]+"' | tr -d '"' || echo "")"
+    _compare_version "Go" "$(_profile_field ".versions.go")" \
+        "$(go version 2>/dev/null | awk '{print $3}' | sed 's/go//' || echo "")"
+    _compare_version "Rust" "$(_profile_field ".versions.rust")" \
+        "$(rustc --version 2>/dev/null | awk '{print $2}' || echo "")"
+fi
+
+# =============================================================================
+# Progress summary
+# =============================================================================
+printf "\n" >&2
+step "Summary"
+
+_TOTAL_ALL=$((_CARRIED + _OPEN + _SUNSET + _NEW))
+
+printf "\n" >&2
+printf "  %s%-25s %d%s\n" "$_GREEN"  "Carried over:"         "$_CARRIED" "$_RESET" >&2
+printf "  %s%-25s %d%s\n" "$_RED"    "Open (still missing):" "$_OPEN"    "$_RESET" >&2
+printf "  %s%-25s %d%s\n" "$_BLUE"   "Intentionally dropped:" "$_SUNSET"  "$_RESET" >&2
+printf "  %s%-25s %d%s\n" "$_CYAN"   "Newly added:"          "$_NEW"     "$_RESET" >&2
+printf "  %s%-25s %d / %d%s\n" "$_BOLD" "Progress:" \
+    "$((_CARRIED + _SUNSET))" "$((_TOTAL_ALL - _NEW))" "$_RESET" >&2
+printf "\n" >&2
+
+if [ "$_OPEN" -gt 0 ]; then
+    warn "$_OPEN open item(s) — catch-up commands listed above"
+else
+    ok "All items carried over or intentionally dropped"
+fi
+
+# =============================================================================
+# Optional: Markdown report
+# =============================================================================
+if [ "$WRITE_MARKDOWN" = "1" ]; then
+    ensure_local_dir
+    _MD_FILE="$LOCAL_DIR/migration-diff.md"
+
+    {
+        printf "# Migration Diff Report\n\n"
+        printf "**Date:** %s  \n" "$(date '+%Y-%m-%d %H:%M:%S')"
+        printf "**Profile:** %s  \n" "$PROFILE_FILE"
+        printf "**Old machine:** macOS %s · %s  \n\n" "$_OLD_MACOS" "$_OLD_ARCH"
+
+        printf "## Progress\n\n"
+        printf "| Category | Count |\n"
+        printf "|----------|------:|\n"
+        printf "| Carried over | %d |\n" "$_CARRIED"
+        printf "| Open (still missing) | %d |\n" "$_OPEN"
+        printf "| Intentionally dropped | %d |\n" "$_SUNSET"
+        printf "| Newly added | %d |\n\n" "$_NEW"
+
+        if [ -n "$_REPORT_MISSING" ]; then
+            printf "## Still missing\n\n"
+            printf "%s" "$_REPORT_MISSING" | while IFS=: read -r cat item; do
+                case "$cat" in
+                    brew)   printf -- "- \`brew install %s\`\n" "$item" ;;
+                    cask)   printf -- "- \`brew install --cask %s\`\n" "$item" ;;
+                    npm)    printf -- "- \`npm install -g %s\`\n" "$item" ;;
+                    vscode) printf -- "- \`code --install-extension %s\`\n" "$item" ;;
+                    ollama) printf -- "- \`ollama pull %s\`\n" "$item" ;;
+                    *)      printf -- "- %s: %s\n" "$cat" "$item" ;;
+                esac
+            done
+            printf "\n"
+        fi
+
+        if [ -n "$_REPORT_SUNSET" ]; then
+            printf "## Intentionally dropped (sunset/deprecated)\n\n"
+            printf "%s" "$_REPORT_SUNSET" | while IFS=: read -r cat item; do
+                printf -- "- %s: \`%s\`\n" "$cat" "$item"
+            done
+            printf "\nThese tools are marked as \`sunset\` or \`deprecated\` in \`manifests/tools.yaml\`.\n\n"
+        fi
+
+        if [ -n "$_REPORT_VERSION" ]; then
+            printf "## Version differences\n\n"
+            printf "%s\n" "$_REPORT_VERSION"
+        fi
+
+        if [ -n "$_REPORT_NEW" ]; then
+            printf "## Newly added\n\n"
+            printf "%s" "$_REPORT_NEW" | while IFS=: read -r cat item; do
+                printf -- "- %s: \`%s\`\n" "$cat" "$item"
+            done
+            printf "\n"
+        fi
+
+        printf "\n---\n*Generated: %s*\n" "$(date '+%Y-%m-%d %H:%M:%S')"
+    } > "$_MD_FILE"
+
+    ok "Report: $_MD_FILE"
+fi
+
+# =============================================================================
+# Exit-Code
+# =============================================================================
+if [ "$_OPEN" -gt 0 ]; then
+    exit 1
+fi
+exit 0

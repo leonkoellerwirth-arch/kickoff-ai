@@ -1,0 +1,35 @@
+# automation/manifests/npm-globals.txt
+# Declarative list of desired global npm packages.
+# Managed via: mac-snapshot (diff), mac-update --only npm (update).
+#
+# Format: one package ID per line (without @version), comments with #.
+#         mac-snapshot compares this list with 'npm list -g --depth=0'.
+#
+# NOT included: openclaw, clawhub
+#   Reason: uninstall the OpenClaw ecosystem (~/dev/openclaw does not exist,
+#   4 shell aliases are dead, LaunchAgent fails — gap analysis A.1).
+#   Uninstall: npm uninstall -g openclaw clawhub
+#
+# NOTE on npm-check-updates / depcheck / knip:
+#   These tools are better used via npx rather than installed globally:
+#     npx npm-check-updates   # Checks package.json for newer versions
+#     npx depcheck             # Finds unused dependencies
+#     npx knip                 # Finds unused exports/files
+#   Reason: rarely used, version-sensitive, no permanent PATH entry needed.
+
+# AI agent CLIs
+@kilocode/cli
+@openai/codex
+@steipete/oracle
+
+# OpenClaw follow-on tooling (check if still needed)
+mcporter
+omniroute
+ruflo
+
+# Image processing
+sharp-cli
+
+# Utilities
+corepack
+uipro-cli

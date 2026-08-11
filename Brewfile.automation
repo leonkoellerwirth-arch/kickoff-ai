@@ -1,0 +1,72 @@
+# =============================================================================
+# Brewfile.automation — Dependencies for the automation layer
+#
+# Install: brew bundle --file=Brewfile.automation
+#
+# Prerequisites (already installed per INVENTORY §2 — do NOT duplicate):
+#   gitleaks, jq, ripgrep, uv, pnpm, gh, git, ollama, shellcheck
+#
+# Node tools as npx instead of global:
+#   npx npm-check-updates  — Checks package.json for newer versions
+#   npx depcheck           — Finds unused dependencies
+#   npx knip               — Finds unused exports/files
+#   Reason: rarely used, version-sensitive, no permanent overhead in PATH
+# =============================================================================
+
+# --- App Store access via script ---
+# Enables mas updates in mac-update --only mas
+# Moves App Store apps from the manual list into automation
+brew "mas"
+
+# --- Desktop notifications for background jobs ---
+# Used by notify() in lib-automation.sh
+# Enables launchd jobs to send brief status messages
+brew "terminal-notifier"
+
+# --- Storage analysis (for mac-clean --dry-run reports) ---
+# dust: fast, intuitive du replacement (Rust)
+brew "dust"
+
+# --- Safe deletion instead of rm (for mac-clean) ---
+# Moves files to the Trash instead of permanently deleting
+brew "trash"
+
+# --- Environment variable management ---
+# direnv: automatically loads .envrc when cd-ing into a directory
+# Complements env-run: for simpler local dev setups without Vaultwarden overhead
+brew "direnv"
+
+# --- Structured data processing ---
+# yq: YAML/JSON/TOML parser for Compose files, package.json etc.
+# Used by mac-snapshot for structured output
+brew "yq"
+
+# --- Modern CLI utilities (for repo-sweep, mac-snapshot) ---
+
+# fd: fast find replacement
+brew "fd"
+
+# bat: cat with syntax highlighting (for diff display in mac-snapshot)
+brew "bat"
+
+# eza: modern ls (for dev-ps and repo-sweep output)
+brew "eza"
+
+# fzf: interactive fuzzy search (for dev-up interactive stack selection)
+brew "fzf"
+
+# zoxide: smart cd with frequency tracking
+brew "zoxide"
+
+# --- Git productivity ---
+
+# lazygit: TUI for Git (for repo-sweep workflow)
+brew "lazygit"
+
+# git-delta: diff pager with syntax highlighting (for mac-snapshot diffs)
+brew "git-delta"
+
+# --- pre-commit for secret-sweep install-hooks ---
+# Enables .pre-commit-config.yaml in ~/dev/base and other repos
+# (gap analysis A.7: pre-commit config exists, tool was missing)
+brew "pre-commit"

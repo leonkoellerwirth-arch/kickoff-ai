@@ -1,0 +1,309 @@
+#!/usr/bin/env bash
+# =============================================================================
+# automation/bin/db-backup — Database dumps from running containers
+#
+# Problem:    5 MySQL containers + Postgres + Qdrant + Valkey run with volumes,
+#             without any recognisable dump routine (INVENTORY §5). Data loss
+#             from docker system prune or accidental volume deletion would be
+#             unrecoverable.
+# Does:       Auto-detects running DB containers (image names mysql/mariadb/
+#             postgres), pulls mysqldump / pg_dump from inside them,
+#             compresses to ~/backups/db/<container>/<date>.sql.gz,
+#             rotates (keeps N days), validates dumps for plausibility.
+#             Credentials are NOT stored in the script — read from container
+#             env variables or `bw` (Bitwarden CLI), otherwise prompted
+#             interactively.
+# Changes:    Writes new backup files to ~/backups/db/. Deletes old backups
+#             (rotation). No container changes.
+# Usage:      db-backup [--dry-run] [--keep-days N] [--container <name>] [--help]
+# =============================================================================
+set -euo pipefail
+
+AUTOMATION_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$AUTOMATION_DIR/lib-automation.sh"
+
+# =============================================================================
+# Argument-Parsing
+# =============================================================================
+KEEP_DAYS=14
+TARGET_CONTAINER=""
+
+for arg in "$@"; do
+    case "$arg" in
+        --dry-run)     DRY_RUN=1 ;;
+        --keep-days)   KEEP_NEXT=1 ;;
+        --container)   CONTAINER_NEXT=1 ;;
+        --help|-h)
+            cat >&2 <<'EOF'
+Usage: db-backup [--dry-run] [--keep-days N] [--container <name>] [--help]
+
+  Creates dumps from running MySQL/MariaDB/PostgreSQL containers.
+  Backups: ~/backups/db/<container>/<date>.sql.gz
+
+Options:
+  --dry-run            Show what would be backed up without dumping
+  --keep-days N        Keep backups for N days (default: 14)
+  --container <name>   Back up only this container
+  --help               This help
+
+Credentials:
+  Looked up in this order:
+  1. Container env variables (MYSQL_ROOT_PASSWORD, POSTGRES_PASSWORD etc.)
+  2. Bitwarden CLI (`bw` — if BW_SESSION is set)
+  3. Interactive prompt
+
+Output:
+  ~/backups/db/<container-name>/<YYYY-MM-DD>.sql.gz
+
+Examples:
+  db-backup                      # Back up all running DB containers
+  db-backup --dry-run            # Show what would be backed up
+  db-backup --container my-mysql # Only this container
+  db-backup --keep-days 30       # Keep 30 days
+EOF
+            exit 0
+            ;;
+        *)
+            if [ "${KEEP_NEXT:-0}" = "1" ]; then
+                KEEP_DAYS="$arg"
+                KEEP_NEXT=0
+            elif [ "${CONTAINER_NEXT:-0}" = "1" ]; then
+                TARGET_CONTAINER="$arg"
+                CONTAINER_NEXT=0
+            fi
+            ;;
+    esac
+done
+
+require_docker
+
+BACKUP_BASE="$HOME/backups/db"
+DATE=$(date '+%Y-%m-%d')
+TIME=$(date '+%H%M%S')
+
+# =============================================================================
+# Credential-Suche: Container-Env → bw → interaktiv
+# =============================================================================
+get_container_env() {
+    local container="$1"
+    local var="$2"
+    docker inspect --format "{{range .Config.Env}}{{println .}}{{end}}" "$container" 2>/dev/null | \
+        grep "^${var}=" | cut -d= -f2- | head -1 || true
+}
+
+get_credential() {
+    local container="$1"
+    local env_var="$2"
+    local op_path="${3:-}"
+    local prompt="${4:-Password for $container}"
+
+    # 1. Container-Env-Variable
+    cred=$(get_container_env "$container" "$env_var" || true)
+    if [ -n "$cred" ]; then
+        printf '%s' "$cred"
+        return 0
+    fi
+
+    # 2. Bitwarden CLI — if BW_SESSION is set and bw is available
+    if [ -n "$op_path" ] && have bw && [ -n "${BW_SESSION:-}" ]; then
+        cred=$(bw get password "$op_path" --session "$BW_SESSION" 2>/dev/null || true)
+        if [ -n "$cred" ]; then
+            printf '%s' "$cred"
+            return 0
+        fi
+    fi
+
+    # 3. Interaktive Abfrage
+    printf "%s: " "$prompt" >&2
+    read -rs cred </dev/tty
+    printf "\n" >&2
+    printf '%s' "$cred"
+}
+
+# =============================================================================
+# MySQL/MariaDB dump
+# =============================================================================
+dump_mysql() {
+    local container="$1"
+    local backup_dir="$2"
+
+    info "MySQL/MariaDB dump: $container"
+
+    # Look up credentials
+    root_pw=$(get_credential "$container" "MYSQL_ROOT_PASSWORD" "" \
+        "MySQL root password for $container")
+
+    # List databases (excluding system DBs)
+    dbs=$(docker exec "$container" mysql -u root -p"${root_pw}" \
+        -e "SHOW DATABASES;" --batch --skip-column-names 2>/dev/null | \
+        grep -vE '^(information_schema|performance_schema|mysql|sys)$' || true)
+
+    if [ -z "$dbs" ]; then
+        warn "No databases found in $container (or auth error)."
+        return 1
+    fi
+
+    while IFS= read -r db; do
+        [ -z "$db" ] && continue
+        out_file="$backup_dir/${DATE}-${TIME}-${db}.sql.gz"
+
+        if [ "$DRY_RUN" = "1" ]; then
+            info "[dry-run] Would dump: $container/$db → $out_file"
+            continue
+        fi
+
+        info "  Dumping database: $db → $out_file"
+        docker exec "$container" mysqldump -u root -p"${root_pw}" \
+            --single-transaction --quick --lock-tables=false "$db" 2>/dev/null | \
+            gzip > "$out_file"
+
+        # Plausibility check
+        if [ -f "$out_file" ]; then
+            size=$(du -sk "$out_file" | awk '{print $1}')
+            if [ "$size" -gt 0 ]; then
+                # Check whether dump ends correctly (marker in last block)
+                end_marker=$(gzip -dc "$out_file" 2>/dev/null | tail -5 | grep -c "Dump completed" || echo "0")
+                if [ "$end_marker" -gt 0 ]; then
+                    ok "    $db: $(du -sh "$out_file" | awk '{print $1}') ✓"
+                else
+                    warn "    $db: Dump possibly incomplete (no end marker)"
+                fi
+            else
+                warn "    $db: Dump is empty!"
+                rm -f "$out_file"
+            fi
+        fi
+    done < <(printf '%s\n' "$dbs")
+}
+
+# =============================================================================
+# PostgreSQL dump
+# =============================================================================
+dump_postgres() {
+    local container="$1"
+    local backup_dir="$2"
+
+    info "PostgreSQL dump: $container"
+
+    pg_user=$(get_container_env "$container" "POSTGRES_USER" || echo "postgres")
+    pg_user="${pg_user:-postgres}"
+
+    # List databases
+    dbs=$(docker exec -e PGPASSWORD="" "$container" psql -U "$pg_user" \
+        -t -c "SELECT datname FROM pg_database WHERE datistemplate = false AND datname != 'postgres';" \
+        2>/dev/null | tr -d ' ' | grep -v '^$' || true)
+
+    if [ -z "$dbs" ]; then
+        # Fall back to dumping postgres DB only
+        dbs="postgres"
+    fi
+
+    while IFS= read -r db; do
+        [ -z "$db" ] && continue
+        out_file="$backup_dir/${DATE}-${TIME}-${db}.sql.gz"
+
+        if [ "$DRY_RUN" = "1" ]; then
+            info "[dry-run] Would dump: $container/$db → $out_file"
+            continue
+        fi
+
+        info "  Dumping database: $db → $out_file"
+        docker exec "$container" pg_dump -U "$pg_user" "$db" 2>/dev/null | \
+            gzip > "$out_file"
+
+        if [ -f "$out_file" ]; then
+            size=$(du -sk "$out_file" | awk '{print $1}')
+            if [ "$size" -gt 0 ]; then
+                ok "    $db: $(du -sh "$out_file" | awk '{print $1}') ✓"
+            else
+                warn "    $db: Dump is empty!"
+                rm -f "$out_file"
+            fi
+        fi
+    done < <(printf '%s\n' "$dbs")
+}
+
+# =============================================================================
+# Detect and back up containers
+# =============================================================================
+step "=== db-backup ==="
+info "Backup directory: $BACKUP_BASE"
+info "Retention: $KEEP_DAYS days"
+if [ "$DRY_RUN" = "1" ]; then
+    warn "DRY-RUN: No files will be created."
+fi
+
+# Find running containers with DB images
+if [ -n "$TARGET_CONTAINER" ]; then
+    containers="$TARGET_CONTAINER"
+else
+    containers=$(docker ps --format "{{.Names}} {{.Image}}" 2>/dev/null | \
+        grep -iE 'mysql|mariadb|postgres' | awk '{print $1}' || true)
+fi
+
+if [ -z "$containers" ]; then
+    warn "No running MySQL/MariaDB/PostgreSQL containers found."
+    info "Running containers: docker ps"
+    exit 0
+fi
+
+backed_up=0
+while IFS= read -r container; do
+    [ -z "$container" ] && continue
+
+    # Container-Image ermitteln
+    image=$(docker inspect --format '{{.Config.Image}}' "$container" 2>/dev/null || echo "")
+    image_lower=$(printf '%s' "$image" | tr '[:upper:]' '[:lower:]')
+
+    # Backup-Verzeichnis anlegen
+    backup_dir="$BACKUP_BASE/$container"
+    if [ "$DRY_RUN" = "0" ]; then
+        mkdir -p "$backup_dir"
+    fi
+
+    step "Container: $container (Image: $image)"
+
+    case "$image_lower" in
+        *mysql*|*mariadb*)
+            dump_mysql "$container" "$backup_dir"
+            ;;
+        *postgres*)
+            dump_postgres "$container" "$backup_dir"
+            ;;
+        *)
+            warn "Unknown DB type: $image — skipping $container"
+            continue
+            ;;
+    esac
+
+    backed_up=$((backed_up + 1))
+done < <(printf '%s\n' "$containers")
+
+# =============================================================================
+# Rotation: delete old backups
+# =============================================================================
+if [ "$DRY_RUN" = "0" ] && [ -d "$BACKUP_BASE" ]; then
+    step "Rotation: deleting backups older than $KEEP_DAYS days"
+    deleted=$(find "$BACKUP_BASE" -name "*.sql.gz" -mtime "+$KEEP_DAYS" 2>/dev/null | wc -l | tr -d ' ')
+    if [ "$deleted" -gt 0 ]; then
+        find "$BACKUP_BASE" -name "*.sql.gz" -mtime "+$KEEP_DAYS" -delete 2>/dev/null || true
+        info "$deleted old backup file(s) deleted."
+    else
+        info "No backups older than $KEEP_DAYS days."
+    fi
+fi
+
+# =============================================================================
+# Summary
+# =============================================================================
+printf "\n" >&2
+if [ "$backed_up" -gt 0 ]; then
+    ok "$backed_up container(s) backed up."
+    if [ "$DRY_RUN" = "0" ]; then
+        info "Backups in: $BACKUP_BASE"
+        du -sh "$BACKUP_BASE" 2>/dev/null >&2 || true
+    fi
+    notify "db-backup complete" "$backed_up container(s) backed up → $BACKUP_BASE"
+else
+    warn "No containers backed up."
+fi

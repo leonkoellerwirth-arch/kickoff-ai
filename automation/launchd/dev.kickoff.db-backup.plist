@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+    "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+    dev.kickoff.db-backup.plist
+    Daily database backup (03:00 — 30 min offset from idle-down).
+    Finding: 5 MySQL + Postgres + other DB containers without a backup routine (INVENTORY §5).
+    Mode: real backup (writes only new .sql.gz files, no deletion).
+    Log: ~/Library/Logs/kickoff/db-backup.log
+    Install: automation/launchd/install-launchd.sh
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>dev.kickoff.db-backup</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>__BIN_DIR__/db-backup</string>
+        <string>--keep-days</string>
+        <string>14</string>
+    </array>
+
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>3</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>StandardOutPath</key>
+    <string>__HOME__/Library/Logs/kickoff/db-backup.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>__HOME__/Library/Logs/kickoff/db-backup.log</string>
+
+    <key>Nice</key>
+    <integer>10</integer>
+
+    <key>LowPriorityIO</key>
+    <true/>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <key>HOME</key>
+        <string>__HOME__</string>
+    </dict>
+</dict>
+</plist>

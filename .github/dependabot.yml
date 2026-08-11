@@ -1,0 +1,25 @@
+# =============================================================================
+# .github/dependabot.yml — Automatic version updates for GitHub Actions
+#
+# Purpose:  Keeps the used GitHub Actions versions up to date.
+#           Creates weekly PRs for outdated Actions.
+# =============================================================================
+version: 2
+
+updates:
+  # GitHub Actions
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Europe/Berlin
+    commit-message:
+      prefix: "chore"
+      include: scope
+    labels:
+      - "chore"
+      - "dependencies"
+    reviewers: []
+    open-pull-requests-limit: 5

@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+    "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+    dev.kickoff.dev-down-idle.plist
+    Stops Docker containers with ~0% CPU that have been running for >=4 hours.
+    Daily at 02:30 (staggered, no collision with other jobs).
+    Action: dev-down --idle 4h (reads, stops containers — never deletes volumes).
+    Log: $HOME/Library/Logs/kickoff/dev-down-idle.log
+    Install: automation/launchd/install-launchd.sh
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>dev.kickoff.dev-down-idle</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>__BIN_DIR__/dev-down</string>
+        <string>--idle</string>
+        <string>4h</string>
+    </array>
+
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>2</integer>
+        <key>Minute</key>
+        <integer>30</integer>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>StandardOutPath</key>
+    <string>__HOME__/Library/Logs/kickoff/dev-down-idle.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>__HOME__/Library/Logs/kickoff/dev-down-idle.log</string>
+
+    <key>Nice</key>
+    <integer>10</integer>
+
+    <key>LowPriorityIO</key>
+    <true/>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <key>HOME</key>
+        <string>__HOME__</string>
+    </dict>
+</dict>
+</plist>

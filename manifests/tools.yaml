@@ -1,0 +1,1698 @@
+# =============================================================================
+# manifests/tools.yaml — Tool Registry
+#
+# Purpose:    Single source of truth for every tool in this macOS setup.
+#             Populated from a verified inventory taken 2026-08-10.
+# Requires:   yq (mikefarah, v4+), jq
+# Usage:       yq '.[] | select(.id == "git")' manifests/tools.yaml
+# Schema:     manifests/schema.md
+# Managing:   manifests/README.md
+# =============================================================================
+#
+# Categories: apple | shell | node | python | containers | ai | editors |
+#             data | media | security | automation
+# Status:     candidate | active | deprecated | sunset
+# Sources:       brew | cask | npm | npx | mas | curl | uv | ollama | builtin | manual
+# Check methods: brew | npm | github-release | mas | ollama | manual
+
+# =============================================================================
+# APPLE-TOOLCHAIN
+# =============================================================================
+
+- id: xcode
+  name: Xcode
+  category: apple
+  source: mas
+  ref: "497799835"
+  level: 0
+  status: active
+  version_seen: "26.6"
+  version_check: mas
+  check_ref: "497799835"
+  why: "Required for iOS/macOS development; SDKs, Simulator, Swift compiler"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+- id: cocoapods
+  name: CocoaPods
+  category: apple
+  source: brew
+  ref: cocoapods
+  level: 2
+  status: active
+  version_seen: ""
+  version_check: brew
+  check_ref: cocoapods
+  why: "iOS dependency manager for legacy projects and Xcode integrations"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+# =============================================================================
+# SHELL / VERSION CONTROL / GENERAL CLI TOOLS
+# =============================================================================
+
+- id: git
+  name: git
+  category: shell
+  source: brew
+  ref: git
+  level: 0
+  status: active
+  version_seen: ""
+  version_check: brew
+  check_ref: git
+  why: "Brew git must take precedence over /usr/bin/git; newer version with LFS support"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+- id: git-lfs
+  name: git-lfs
+  category: shell
+  source: brew
+  ref: git-lfs
+  level: 0
+  status: active
+  version_seen: ""
+  version_check: brew
+  check_ref: git-lfs
+  why: "Git Large File Storage for binary files in repos (globally enabled)"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+- id: gh
+  name: GitHub CLI
+  category: shell
+  source: brew
+  ref: gh
+  level: 0
+  status: active
+  version_seen: ""
+  version_check: brew
+  check_ref: gh
+  why: "GitHub interaction from the terminal (PRs, Issues, Releases, API)"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+- id: shellcheck
+  name: ShellCheck
+  category: shell
+  source: brew
+  ref: shellcheck
+  level: 0
+  status: active
+  version_seen: ""
+  version_check: brew
+  check_ref: shellcheck
+  why: "Shell script linter; required dependency for CI quality gate"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+- id: jq
+  name: jq
+  category: shell
+  source: brew
+  ref: jq
+  level: 0
+  status: active
+  version_seen: ""
+  version_check: brew
+  check_ref: jq
+  why: "JSON processing; used by up2date, sunset, and all automation scripts"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+- id: tmux
+  name: tmux
+  category: shell
+  source: brew
+  ref: tmux
+  level: 1
+  status: active
+  version_seen: ""
+  version_check: brew
+  check_ref: tmux
+  why: "Terminal multiplexer for persistent sessions, especially in remote environments"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+- id: tree
+  name: tree
+  category: shell
+  source: brew
+  ref: tree
+  level: 1
+  status: active
+  version_seen: ""
+  version_check: brew
+  check_ref: tree
+  why: "Directory visualization; used in inventory scripts and documentation"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+- id: watch
+  name: watch
+  category: shell
+  source: brew
+  ref: watch
+  level: 1
+  status: active
+  version_seen: ""
+  version_check: brew
+  check_ref: watch
+  why: "Periodically execute commands (monitoring, service status)"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+- id: wget
+  name: wget
+  category: shell
+  source: brew
+  ref: wget
+  level: 1
+  status: active
+  version_seen: ""
+  version_check: brew
+  check_ref: wget
+  why: "HTTP/FTP downloader with resume support; complement to curl"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+- id: ripgrep
+  name: ripgrep
+  category: shell
+  source: brew
+  ref: ripgrep
+  level: 1
+  status: active
+  version_seen: ""
+  version_check: brew
+  check_ref: ripgrep
+  why: "Fast grep (rg) with .gitignore support; primary search tool"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+- id: cmake
+  name: cmake
+  category: shell
+  source: brew
+  ref: cmake
+  level: 1
+  status: active
+  version_seen: ""
+  version_check: brew
+  check_ref: cmake
+  why: "Build system; dependency of MLX, LLVM, and other native libraries"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+- id: p7zip
+  name: p7zip
+  category: shell
+  source: brew
+  ref: p7zip
+  level: 2
+  status: active
+  version_seen: ""
+  version_check: brew
+  check_ref: p7zip
+  why: "7-Zip archiving for macOS; used for encrypted archives and backups"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+- id: iproute2mac
+  name: iproute2mac
+  category: shell
+  source: brew
+  ref: iproute2mac
+  level: 2
+  status: active
+  version_seen: ""
+  version_check: brew
+  check_ref: iproute2mac
+  why: "Linux ip command shim for macOS; important for network debugging scripts"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+- id: util-linux
+  name: util-linux
+  category: shell
+  source: brew
+  ref: util-linux
+  level: 2
+  status: active
+  version_seen: ""
+  version_check: brew
+  check_ref: util-linux
+  why: "GNU utilities (column, rename, etc.) not included with macOS"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+- id: pcre
+  name: pcre
+  category: shell
+  source: brew
+  ref: pcre
+  level: 2
+  status: active
+  version_seen: ""
+  version_check: brew
+  check_ref: pcre
+  why: "PCRE library; dependency of several formulae (grep, nginx, etc.)"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+- id: go
+  name: Go
+  category: shell
+  source: brew
+  ref: go
+  level: 2
+  status: active
+  version_seen: ""
+  version_check: brew
+  check_ref: go
+  why: "Go runtime; used as a dependency of some Brew formulae (gitleaks, etc.)"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+- id: rust
+  name: Rust
+  category: shell
+  source: brew
+  ref: rust
+  level: 2
+  status: active
+  version_seen: ""
+  version_check: brew
+  check_ref: rust
+  why: "Rust toolchain including cargo; used for ripgrep and other Rust-based tools"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+- id: php
+  name: PHP
+  category: shell
+  source: brew
+  ref: php
+  level: 2
+  status: active
+  version_seen: ""
+  version_check: brew
+  check_ref: php
+  why: "PHP interpreter; several active PHP projects in the portfolio"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+- id: ruby
+  name: Ruby
+  category: shell
+  source: brew
+  ref: ruby
+  level: 2
+  status: active
+  version_seen: ""
+  version_check: brew
+  check_ref: ruby
+  why: "Ruby interpreter; runtime dependency of CocoaPods and Bundler"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+- id: aria2
+  name: aria2
+  category: shell
+  source: brew
+  ref: aria2
+  level: 3
+  status: active
+  version_seen: ""
+  version_check: brew
+  check_ref: aria2
+  why: "Multi-connection downloader; faster downloading of large files and torrents"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+- id: lftp
+  name: lftp
+  category: shell
+  source: brew
+  ref: lftp
+  level: 3
+  status: active
+  version_seen: ""
+  version_check: brew
+  check_ref: lftp
+  why: "FTP/SFTP client with scripting support; used for server deployments"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+- id: protobuf
+  name: protobuf
+  category: shell
+  source: brew
+  ref: protobuf@21
+  level: 2
+  status: active
+  version_seen: ""
+  version_check: brew
+  check_ref: protobuf@21
+  why: "Protocol Buffers v21; used for gRPC services and Protobuf schemas in backend projects"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+- id: bird-steipete
+  name: bird (steipete/tap)
+  category: shell
+  source: brew
+  ref: steipete/tap/bird
+  level: 3
+  status: candidate
+  version_seen: ""
+  version_check: manual
+  check_ref: steipete/tap
+  why: "Origin unclear — found in brew leaves from steipete/tap; needs review"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+- id: summarize
+  name: summarize
+  category: shell
+  source: brew
+  ref: summarize
+  level: 3
+  status: candidate
+  version_seen: ""
+  version_check: brew
+  check_ref: summarize
+  why: "Origin unclear — found in brew leaves; needs review"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+- id: himalaya
+  name: himalaya
+  category: shell
+  source: brew
+  ref: himalaya
+  level: 3
+  status: active
+  version_seen: ""
+  version_check: brew
+  check_ref: himalaya
+  why: "Email CLI for command-line-based email access (IMAP/SMTP)"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+# =============================================================================
+# NODE STACK
+# =============================================================================
+
+- id: nvm
+  name: nvm
+  category: node
+  source: curl
+  ref: https://github.com/nvm-sh/nvm/releases
+  level: 1
+  status: active
+  version_seen: ""
+  version_check: github-release
+  check_ref: nvm-sh/nvm
+  why: "Node version manager; manages Node 24 as default, respects .nvmrc in projects"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+- id: pnpm
+  name: pnpm
+  category: node
+  source: brew
+  ref: pnpm
+  level: 1
+  status: active
+  version_seen: "10.29.1"
+  version_check: brew
+  check_ref: pnpm
+  why: "Default package manager for JS projects; symlink store, faster than npm, strict isolation"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+- id: yarn
+  name: yarn
+  category: node
+  source: npm
+  ref: yarn
+  level: 2
+  status: active
+  version_seen: "1.22.22"
+  version_check: npm
+  check_ref: yarn
+  why: "Yarn v1 as compatibility fallback for older repos; new projects use pnpm"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: pnpm
+
+- id: bun
+  name: bun
+  category: node
+  source: curl
+  ref: https://bun.sh
+  level: 2
+  status: active
+  version_seen: "1.3.14"
+  version_check: github-release
+  check_ref: oven-sh/bun
+  why: "Secondary performance path for JS builds and fast scripts; not the default runtime"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+- id: deno
+  name: deno
+  category: node
+  source: brew
+  ref: deno
+  level: 2
+  status: active
+  version_seen: "2.9.2"
+  version_check: brew
+  check_ref: deno
+  why: "TypeScript-native runtime; used for automation scripts and server deployments"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+- id: corepack
+  name: corepack
+  category: node
+  source: npm
+  ref: corepack
+  level: 2
+  status: active
+  version_seen: ""
+  version_check: npm
+  check_ref: corepack
+  why: "Node package manager enabler; activates yarn/pnpm in projects without a global installation"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+- id: sharp-cli
+  name: sharp-cli
+  category: node
+  source: npm
+  ref: sharp-cli
+  level: 3
+  status: active
+  version_seen: ""
+  version_check: npm
+  check_ref: sharp-cli
+  why: "High-performance image processing from the CLI; used in media workflows"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+- id: omniroute
+  name: OmniRoute
+  category: node
+  source: npm
+  ref: omniroute
+  level: 3
+  status: candidate
+  version_seen: ""
+  version_check: npm
+  check_ref: omniroute
+  why: "Routing agent installed globally via npm; production status unclear — needs review"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+- id: mcporter
+  name: mcporter
+  category: node
+  source: npm
+  ref: mcporter
+  level: 3
+  status: candidate
+  version_seen: ""
+  version_check: npm
+  check_ref: mcporter
+  why: "Origin unclear — found in global npm packages; needs review"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+- id: ruflo
+  name: ruflo
+  category: node
+  source: npm
+  ref: ruflo
+  level: 3
+  status: candidate
+  version_seen: ""
+  version_check: npm
+  check_ref: ruflo
+  why: "Origin unclear — found in global npm packages; needs review"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+- id: uipro-cli
+  name: uipro-cli
+  category: node
+  source: npm
+  ref: uipro-cli
+  level: 3
+  status: candidate
+  version_seen: ""
+  version_check: npm
+  check_ref: uipro-cli
+  why: "Origin unclear — found in global npm packages; needs review"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+# =============================================================================
+# PYTHON STACK
+# =============================================================================
+
+- id: uv
+  name: uv
+  category: python
+  source: brew
+  ref: uv
+  level: 1
+  status: active
+  version_seen: "0.10.1"
+  version_check: brew
+  check_ref: uv
+  why: "Primary Python package manager; 10-100x faster than pip, manages Python versions"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+- id: pipx
+  name: pipx
+  category: python
+  source: brew
+  ref: pipx
+  level: 1
+  status: active
+  version_seen: ""
+  version_check: brew
+  check_ref: pipx
+  why: "Isolated installation of Python CLI tools; alternative to uv tool for legacy packages"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+- id: pipenv
+  name: pipenv
+  category: python
+  source: brew
+  ref: pipenv
+  level: 2
+  status: active
+  version_seen: ""
+  version_check: brew
+  check_ref: pipenv
+  why: "Fallback for older Python projects with Pipfile; new projects use uv"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: uv
+
+- id: miniforge
+  name: Miniforge / conda
+  category: python
+  source: curl
+  ref: https://github.com/conda-forge/miniforge/releases
+  level: 2
+  status: active
+  version_seen: "22.11.1"
+  version_check: github-release
+  check_ref: conda-forge/miniforge
+  why: "conda for projects that require conda-forge-only packages (ML, science); conda-base stays minimal"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+- id: python-gdbm
+  name: python-gdbm@3.11
+  category: python
+  source: brew
+  ref: python-gdbm@3.11
+  level: 2
+  status: candidate
+  version_seen: ""
+  version_check: brew
+  check_ref: python-gdbm@3.11
+  why: "Origin unclear — found in brew leaves; likely a dependency of conda or pip packages; needs review"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+- id: nano-pdf
+  name: nano-pdf
+  category: python
+  source: uv
+  ref: nano-pdf
+  level: 3
+  status: active
+  version_seen: ""
+  version_check: manual
+  check_ref: ""
+  why: "Lightweight PDF tool installed via uv tool; used for PDF processing in projects"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+# =============================================================================
+# CONTAINER / KUBERNETES
+# =============================================================================
+
+- id: docker
+  name: Docker Desktop
+  category: containers
+  source: cask
+  ref: docker
+  level: 1
+  status: active
+  version_seen: "28.0.4"
+  version_check: brew
+  check_ref: docker
+  why: "Container runtime for all local development services (MySQL, Postgres, Qdrant, Valkey)"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+# =============================================================================
+# AI / ML
+# =============================================================================
+
+- id: claude-code
+  name: Claude Code
+  category: ai
+  source: npm
+  ref: "@anthropic-ai/claude-code"
+  level: 1
+  status: active
+  version_seen: ""
+  version_check: npm
+  check_ref: "@anthropic-ai/claude-code"
+  why: "Primary AI development tool; AI-assisted code generation and refactoring in the terminal"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+- id: codex-cli
+  name: OpenAI Codex CLI
+  category: ai
+  source: npm
+  ref: "@openai/codex"
+  level: 1
+  status: active
+  version_seen: "0.147.0"
+  version_check: npm
+  check_ref: "@openai/codex"
+  why: "OpenAI counterpart to Claude Code; full-auto mode for AI development tasks (gpt-5.6-terra)"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+- id: gemini-cli
+  name: Gemini CLI
+  category: ai
+  source: brew
+  ref: gemini-cli
+  level: 1
+  status: active
+  version_seen: ""
+  version_check: brew
+  check_ref: gemini-cli
+  why: "Google Gemini CLI; third AI assistant in the workflow alongside Claude Code and Codex"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+- id: ollama
+  name: Ollama (formula)
+  category: ai
+  source: brew
+  ref: ollama
+  level: 1
+  status: active
+  version_seen: "0.32.4"
+  version_check: brew
+  check_ref: ollama
+  why: "Local LLM execution with Metal acceleration; manages models via 'ollama pull'"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+- id: ollama-app
+  name: Ollama.app (cask)
+  category: ai
+  source: cask
+  ref: ollama
+  level: 1
+  status: candidate
+  version_seen: ""
+  version_check: brew
+  check_ref: ollama
+  why: "Cask version of the Ollama desktop app — duplicates the formula; causes port conflicts per ADR-5; needs review"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: ollama
+
+- id: gpt4all
+  name: GPT4All
+  category: ai
+  source: cask
+  ref: gpt4all
+  level: 2
+  status: candidate
+  version_seen: ""
+  version_check: brew
+  check_ref: gpt4all
+  why: "Origin unclear — installed as a cask but not in Brewfile; needs review"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+- id: openai-whisper
+  name: openai-whisper
+  category: ai
+  source: brew
+  ref: openai-whisper
+  level: 2
+  status: active
+  version_seen: ""
+  version_check: brew
+  check_ref: openai-whisper
+  why: "Speech-to-text engine (OpenAI Whisper) for local audio transcription"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+- id: mlx
+  name: Apple MLX
+  category: ai
+  source: brew
+  ref: mlx
+  level: 2
+  status: active
+  version_seen: ""
+  version_check: brew
+  check_ref: mlx
+  why: "Apple MLX framework for Metal-accelerated machine learning on Apple Silicon"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+- id: ollama-glm-ocr
+  name: "Ollama-Modell: glm-ocr"
+  category: ai
+  source: ollama
+  ref: glm-ocr
+  level: 2
+  status: active
+  version_seen: ""
+  version_check: ollama
+  check_ref: glm-ocr
+  why: "Visual OCR model (~2.2 GB) for document extraction and PDF OCR workflows"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+- id: ollama-llama3-2
+  name: "Ollama-Modell: llama3.2"
+  category: ai
+  source: ollama
+  ref: llama3.2
+  level: 2
+  status: active
+  version_seen: ""
+  version_check: ollama
+  check_ref: llama3.2
+  why: "Meta Llama 3.2 (~2.0 GB); fast general-purpose model for local code generation and RAG"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+- id: ollama-deepseek-r1-14b
+  name: "Ollama-Modell: deepseek-r1:14b"
+  category: ai
+  source: ollama
+  ref: "deepseek-r1:14b"
+  level: 3
+  status: active
+  version_seen: ""
+  version_check: ollama
+  check_ref: "deepseek-r1:14b"
+  why: "DeepSeek R1 14B (~9.0 GB); strong reasoning model for code review and offline analysis"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+- id: ollama-aya-expanse-8b
+  name: "Ollama-Modell: aya-expanse:8b"
+  category: ai
+  source: ollama
+  ref: "aya-expanse:8b"
+  level: 2
+  status: active
+  version_seen: ""
+  version_check: ollama
+  check_ref: "aya-expanse:8b"
+  why: "Aya Expanse 8B (~5.1 GB); multilingual model (DE/EN/BG) for translation and multilingual RAG pipelines"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+- id: kilo-cli
+  name: Kilo Code CLI
+  category: ai
+  source: npm
+  ref: "@kilocode/cli"
+  level: 3
+  status: candidate
+  version_seen: ""
+  version_check: npm
+  check_ref: "@kilocode/cli"
+  why: "Origin unclear — found in global npm packages; needs review"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+- id: oracle-steipete
+  name: "@steipete/oracle"
+  category: ai
+  source: npm
+  ref: "@steipete/oracle"
+  level: 3
+  status: candidate
+  version_seen: ""
+  version_check: npm
+  check_ref: "@steipete/oracle"
+  why: "Origin unclear — found in global npm packages; needs review"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+# --- OpenClaw (sunset) ---
+
+- id: openclaw-npm
+  name: OpenClaw (npm global)
+  category: ai
+  source: npm
+  ref: openclaw
+  level: 2
+  status: sunset
+  version_seen: "2026.2.9"
+  version_check: npm
+  check_ref: openclaw
+  why: "AI gateway daemon; OPENCLAW_PATH points to a non-existent directory, all 4 aliases lead nowhere; marked as obsolete by the user"
+  added: 2025-01-01
+  reviewed: 2026-08-11
+  sunset: "2026-08-08"
+  replaced_by: claude-code
+
+- id: clawhub
+  name: clawhub (npm global)
+  category: ai
+  source: npm
+  ref: clawhub
+  level: 2
+  status: sunset
+  version_seen: ""
+  version_check: npm
+  check_ref: clawhub
+  why: "Part of the OpenClaw ecosystem; removed together with OpenClaw"
+  added: 2025-01-01
+  reviewed: 2026-08-11
+  sunset: "2026-08-08"
+  replaced_by: claude-code
+
+# =============================================================================
+# EDITORS / IDE
+# =============================================================================
+
+- id: visual-studio-code
+  name: Visual Studio Code
+  category: editors
+  source: cask
+  ref: visual-studio-code
+  level: 1
+  status: active
+  version_seen: ""
+  version_check: brew
+  check_ref: visual-studio-code
+  why: "Primary editor for TypeScript/React, Python/FastAPI, PHP; 69 extensions installed"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+- id: iterm2
+  name: iTerm2
+  category: editors
+  source: cask
+  ref: iterm2
+  level: 0
+  status: active
+  version_seen: ""
+  version_check: brew
+  check_ref: iterm2
+  why: "Primary terminal; cc-status hook for Claude Code status bar integrated in iTerm2"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+- id: ghostty
+  name: Ghostty
+  category: editors
+  source: cask
+  ref: ghostty
+  level: 1
+  status: active
+  version_seen: ""
+  version_check: brew
+  check_ref: ghostty
+  why: "Modern terminal emulator as an alternative to iTerm2; configuration currently empty"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+- id: postman
+  name: Postman
+  category: editors
+  source: cask
+  ref: postman
+  level: 1
+  status: active
+  version_seen: ""
+  version_check: brew
+  check_ref: postman
+  why: "API test client for REST/GraphQL development and API debugging"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+# =============================================================================
+# DATABASES / JVM
+# =============================================================================
+
+- id: postgresql
+  name: PostgreSQL
+  category: data
+  source: brew
+  ref: postgresql@17
+  level: 1
+  status: active
+  version_seen: ""
+  version_check: brew
+  check_ref: postgresql@17
+  why: "PostgreSQL database for projects that require a local PG instance (Brewfile: @17, inventory: @14)"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+- id: postgresql-14
+  name: PostgreSQL 14 (alt)
+  category: data
+  source: brew
+  ref: postgresql@14
+  level: 1
+  status: deprecated
+  version_seen: ""
+  version_check: brew
+  check_ref: postgresql@14
+  why: "Outdated version; Brewfile updated to @17 but @14 is still actually installed"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: "2026-11-09"
+  replaced_by: postgresql
+
+- id: mysql
+  name: MySQL 8.0
+  category: data
+  source: brew
+  ref: mysql@8.0
+  level: 1
+  status: active
+  version_seen: ""
+  version_check: brew
+  check_ref: mysql@8.0
+  why: "MySQL 8 for local PHP projects; brew services running; complemented by Docker stacks"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+- id: openjdk-17
+  name: OpenJDK 17
+  category: data
+  source: brew
+  ref: openjdk@17
+  level: 2
+  status: active
+  version_seen: ""
+  version_check: brew
+  check_ref: openjdk@17
+  why: "Java 17 LTS for Spring Boot projects and build tools (Maven, Gradle)"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+- id: maven
+  name: Apache Maven
+  category: data
+  source: brew
+  ref: maven
+  level: 2
+  status: active
+  version_seen: ""
+  version_check: brew
+  check_ref: maven
+  why: "Java build tool; used for Spring Boot projects (pom.xml in 2 repos)"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+- id: gradle
+  name: Gradle
+  category: data
+  source: brew
+  ref: gradle
+  level: 2
+  status: active
+  version_seen: ""
+  version_check: brew
+  check_ref: gradle
+  why: "Java/Kotlin build tool for Android and Spring Boot projects"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+# =============================================================================
+# MEDIA / DOCUMENT PROCESSING
+# =============================================================================
+
+- id: ffmpeg
+  name: FFmpeg
+  category: media
+  source: brew
+  ref: ffmpeg
+  level: 2
+  status: active
+  version_seen: ""
+  version_check: brew
+  check_ref: ffmpeg
+  why: "Audio/video conversion; dependency of openai-whisper and media-tools.sh"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+- id: imagemagick
+  name: ImageMagick
+  category: media
+  source: brew
+  ref: imagemagick
+  level: 2
+  status: active
+  version_seen: ""
+  version_check: brew
+  check_ref: imagemagick
+  why: "Image processing (convert, mogrify); foundation for custom media scripts"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+- id: graphviz
+  name: Graphviz
+  category: media
+  source: brew
+  ref: graphviz
+  level: 2
+  status: active
+  version_seen: ""
+  version_check: brew
+  check_ref: graphviz
+  why: "Graph rendering (dot); used for architecture documentation and PlantUML"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+- id: exiftool
+  name: ExifTool
+  category: media
+  source: brew
+  ref: exiftool
+  level: 2
+  status: active
+  version_seen: ""
+  version_check: brew
+  check_ref: exiftool
+  why: "Read/write EXIF metadata; used for media sanitization and asset management"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+- id: tesseract
+  name: Tesseract
+  category: media
+  source: brew
+  ref: tesseract
+  level: 2
+  status: active
+  version_seen: ""
+  version_check: brew
+  check_ref: tesseract
+  why: "OCR engine; dependency of ocrmypdf and the glm-ocr workflow"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+- id: tesseract-lang
+  name: tesseract-lang
+  category: media
+  source: brew
+  ref: tesseract-lang
+  level: 2
+  status: active
+  version_seen: ""
+  version_check: brew
+  check_ref: tesseract-lang
+  why: "Tesseract language packs (all languages); required for multilingual OCR"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+- id: poppler
+  name: poppler
+  category: media
+  source: brew
+  ref: poppler
+  level: 2
+  status: active
+  version_seen: ""
+  version_check: brew
+  check_ref: poppler
+  why: "PDF tools (pdftotext, pdftocairo); dependency of ocrmypdf"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+- id: qpdf
+  name: qpdf
+  category: media
+  source: brew
+  ref: qpdf
+  level: 2
+  status: active
+  version_seen: ""
+  version_check: brew
+  check_ref: qpdf
+  why: "PDF transformation and linearization; dependency of ocrmypdf"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+- id: ocrmypdf
+  name: OCRmyPDF
+  category: media
+  source: brew
+  ref: ocrmypdf
+  level: 2
+  status: active
+  version_seen: ""
+  version_check: brew
+  check_ref: ocrmypdf
+  why: "Adds OCR to existing PDFs; makes scanned PDFs searchable"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+- id: pdfgrep
+  name: pdfgrep
+  category: media
+  source: brew
+  ref: pdfgrep
+  level: 2
+  status: active
+  version_seen: ""
+  version_check: brew
+  check_ref: pdfgrep
+  why: "Full-text search in PDF files without conversion"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+- id: vips
+  name: libvips
+  category: media
+  source: brew
+  ref: vips
+  level: 3
+  status: active
+  version_seen: ""
+  version_check: brew
+  check_ref: vips
+  why: "High-performance image processing; dependency of sharp-cli and image optimization scripts"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+- id: advancecomp
+  name: advancecomp
+  category: media
+  source: brew
+  ref: advancecomp
+  level: 3
+  status: active
+  version_seen: ""
+  version_check: brew
+  check_ref: advancecomp
+  why: "Optimize PNG/ZIP compression; used in media optimization pipelines"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+- id: yt-dlp
+  name: yt-dlp
+  category: media
+  source: brew
+  ref: yt-dlp
+  level: 3
+  status: active
+  version_seen: ""
+  version_check: brew
+  check_ref: yt-dlp
+  why: "Video downloader (YouTube, etc.); used in crawler and media workflows"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+- id: upscayl
+  name: Upscayl
+  category: media
+  source: cask
+  ref: upscayl
+  level: 3
+  status: active
+  version_seen: ""
+  version_check: brew
+  check_ref: upscayl
+  why: "AI image upscaling with GPU acceleration; used for image quality enhancement"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+- id: calibre
+  name: Calibre
+  category: media
+  source: cask
+  ref: calibre
+  level: 3
+  status: active
+  version_seen: ""
+  version_check: brew
+  check_ref: calibre
+  why: "E-book manager for ePub/PDF conversion; used for book manuscript workflows"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+# =============================================================================
+# SECURITY
+# =============================================================================
+
+- id: gitleaks
+  name: gitleaks
+  category: security
+  source: brew
+  ref: gitleaks
+  level: 0
+  status: active
+  version_seen: ""
+  version_check: brew
+  check_ref: gitleaks
+  why: "Secret scanning in Git repos; required tool for this public repo"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+- id: 1password-cli
+  name: 1Password CLI
+  category: security
+  source: cask
+  ref: 1password-cli
+  level: 1
+  status: deprecated
+  version_seen: "2.34.1"
+  version_check: brew
+  check_ref: 1password-cli
+  why: "Being replaced by bitwarden-cli + self-hosted Vaultwarden. User decision: no SaaS dependency, full data sovereignty."
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: "2026-11-09"
+  replaced_by: bitwarden-cli
+
+- id: bitwarden-cli
+  name: Bitwarden CLI
+  category: security
+  source: brew
+  ref: bitwarden-cli
+  level: 1
+  status: active
+  version_seen: ""
+  version_check: brew
+  check_ref: bitwarden-cli
+  why: "Bitwarden CLI (bw) for secrets management against self-hosted Vaultwarden; credential injection via env-run"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+- id: vaultwarden
+  name: Vaultwarden
+  category: security
+  source: manual
+  ref: vaultwarden/server (Docker Image)
+  level: 2
+  status: active
+  version_seen: ""
+  version_check: manual
+  check_ref: ""
+  why: "Self-hosted Bitwarden server (open source); runs as a Docker container; template at templates/vaultwarden/"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+- id: nmap
+  name: nmap
+  category: security
+  source: brew
+  ref: nmap
+  level: 3
+  status: active
+  version_seen: ""
+  version_check: brew
+  check_ref: nmap
+  why: "Network scanner; pentest and network research tool"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+- id: nikto
+  name: nikto
+  category: security
+  source: brew
+  ref: nikto
+  level: 3
+  status: active
+  version_seen: ""
+  version_check: brew
+  check_ref: nikto
+  why: "Web server scanner for security audits"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+- id: sqlmap
+  name: sqlmap
+  category: security
+  source: brew
+  ref: sqlmap
+  level: 3
+  status: active
+  version_seen: ""
+  version_check: brew
+  check_ref: sqlmap
+  why: "SQL injection testing tool for pentest workflows"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+- id: aircrack-ng
+  name: aircrack-ng
+  category: security
+  source: brew
+  ref: aircrack-ng
+  level: 3
+  status: active
+  version_seen: ""
+  version_check: brew
+  check_ref: aircrack-ng
+  why: "Wi-Fi security analysis and penetration testing"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+- id: dnsmap
+  name: dnsmap
+  category: security
+  source: brew
+  ref: dnsmap
+  level: 3
+  status: active
+  version_seen: ""
+  version_check: brew
+  check_ref: dnsmap
+  why: "DNS enumeration for subdomain discovery during security audits"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+# =============================================================================
+# AUTOMATION / DESKTOP TOOLS
+# =============================================================================
+
+- id: raycast
+  name: Raycast
+  category: automation
+  source: cask
+  ref: raycast
+  level: 1
+  status: active
+  version_seen: ""
+  version_check: brew
+  check_ref: raycast
+  why: "Spotlight replacement with extensions; primary launcher and workflow automation tool"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+- id: alt-tab
+  name: AltTab
+  category: automation
+  source: cask
+  ref: alt-tab
+  level: 1
+  status: active
+  version_seen: ""
+  version_check: brew
+  check_ref: alt-tab
+  why: "macOS Alt+Tab replacement with window preview; improves window navigation"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+- id: aliwangwang
+  name: AliWangWang
+  category: automation
+  source: cask
+  ref: aliwangwang
+  level: 3
+  status: candidate
+  version_seen: ""
+  version_check: manual
+  check_ref: ""
+  why: "Origin unclear — installed as a cask, not in Brewfile; needs review"
+  added: 2026-08-11
+  reviewed: 2026-08-11
+  sunset: null
+  replaced_by: null
+
+# --- OpenClaw Gateway LaunchAgent (sunset) ---
+
+- id: openclaw-gateway-launchd
+  name: OpenClaw Gateway LaunchAgent
+  category: automation
+  source: manual
+  ref: ai.openclaw.gateway.plist
+  level: 2
+  status: sunset
+  version_seen: ""
+  version_check: manual
+  check_ref: ""
+  why: "LaunchAgent for the OpenClaw gateway daemon; removed with OpenClaw; scripts/90-cleanup-legacy.sh removes it"
+  added: 2025-01-01
+  reviewed: 2026-08-11
+  sunset: "2026-08-08"
+  replaced_by: null
+
+- id: openclaw-tap
+  name: Homebrew Tap openclaw/tap
+  category: automation
+  source: brew
+  ref: openclaw/tap
+  level: 2
+  status: sunset
+  version_seen: ""
+  version_check: manual
+  check_ref: ""
+  why: "Homebrew tap for OpenClaw packages (goplaces, openclaw-formula); removed with OpenClaw"
+  added: 2025-01-01
+  reviewed: 2026-08-11
+  sunset: "2026-08-08"
+  replaced_by: null
+
+- id: goplaces
+  name: goplaces
+  category: automation
+  source: brew
+  ref: openclaw/tap/goplaces
+  level: 3
+  status: sunset
+  version_seen: ""
+  version_check: manual
+  check_ref: ""
+  why: "GPS/maps tool from the OpenClaw tap; tap is being removed, which also removes goplaces"
+  added: 2025-01-01
+  reviewed: 2026-08-11
+  sunset: "2026-08-08"
+  replaced_by: null
+
+# --- Orphaned LaunchAgent (sunset) ---
+
+- id: mariadb-launchd
+  name: MariaDB LaunchAgent (orphaned)
+  category: data
+  source: manual
+  ref: homebrew.mxcl.mariadb.plist
+  level: 1
+  status: sunset
+  version_seen: ""
+  version_check: manual
+  check_ref: ""
+  why: "Orphaned LaunchAgent — mariadb is no longer installed, but the plist is still present at ~/Library/LaunchAgents; scripts/90-cleanup-legacy.sh removes it"
+  added: 2024-01-01
+  reviewed: 2026-08-11
+  sunset: "2026-08-08"
+  replaced_by: mysql

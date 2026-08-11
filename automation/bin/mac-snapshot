@@ -1,0 +1,250 @@
+#!/usr/bin/env bash
+# =============================================================================
+# automation/bin/mac-snapshot — Dump current state and diff against repo target
+#
+# Problem:    A setup repo goes stale from the day it is created. New tools are
+#             installed, extensions added, but never checked into the repo.
+#             No overview of the drift between actual and target state.
+# Does:       Dumps the current actual state (Brewfile, npm globals, VS Code
+#             extensions, macOS defaults, Ollama models, Node/Python versions)
+#             to local/snapshot/ and diffs it against the checked-in target
+#             state in the repo.
+#             Output: what is new, what is missing, what has disappeared.
+#             With --write: saves proposals as .diff files to local/snapshot/.
+# Changes:    NEVER modifies repo files automatically. Only local/snapshot/
+#             (gitignored).
+# Usage:      mac-snapshot [--write] [--dry-run] [--help]
+# =============================================================================
+set -euo pipefail
+
+AUTOMATION_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$AUTOMATION_DIR/lib-automation.sh"
+
+# Repo root from lib-automation.sh
+REPO_ROOT="$_REPO_ROOT"
+
+# =============================================================================
+# Argument-Parsing
+# =============================================================================
+WRITE_DIFFS=0
+
+for arg in "$@"; do
+    case "$arg" in
+        --write)    WRITE_DIFFS=1 ;;
+        --dry-run)  DRY_RUN=1 ;;
+        --help|-h)
+            cat >&2 <<'EOF'
+Usage: mac-snapshot [--write] [--dry-run] [--help]
+
+  Compares the current actual state of the system with the checked-in
+  target state in the repo.
+
+Options:
+  --write     Write diff proposals to local/snapshot/proposal-*.diff
+              (repo files are NEVER overwritten automatically!)
+  --dry-run   Show what would be measured without writing to local/snapshot/
+  --help      This help
+
+Output files (local/snapshot/, gitignored):
+  brew-actual.txt           brew bundle dump result
+  npm-globals-actual.txt    npm list -g --depth=0
+  vscode-extensions-actual.txt
+  ollama-models-actual.txt
+  versions-actual.txt       Node/Python/uv versions
+
+Examples:
+  mac-snapshot           # Show diff
+  mac-snapshot --write   # Also save as .diff files
+EOF
+            exit 0
+            ;;
+        *)
+            err "Unknown option: $arg (--help for help)"
+            ;;
+    esac
+done
+
+# =============================================================================
+# Verzeichnis vorbereiten
+# =============================================================================
+SNAP_DIR="$LOCAL_DIR/snapshot"
+if [ "$DRY_RUN" = "0" ]; then
+    ensure_local_dir "snapshot"
+fi
+
+# =============================================================================
+# Helper: write actual-state file
+# =============================================================================
+write_ist() {
+    local name="$1"
+    local content="$2"
+    if [ "$DRY_RUN" = "0" ]; then
+        printf '%s\n' "$content" > "$SNAP_DIR/$name"
+        info "Written: $SNAP_DIR/$name"
+    else
+        info "[dry-run] Would write: $SNAP_DIR/$name"
+    fi
+}
+
+# =============================================================================
+# Helper: show diff and optionally write proposal
+# =============================================================================
+show_diff() {
+    local label="$1"
+    local soll_file="$2"
+    local ist_content="$3"
+    local vorschlag_name="$4"
+
+    printf "\n" >&2
+    step "Diff: $label"
+
+    if [ ! -f "$soll_file" ]; then
+        warn "Target file not found: $soll_file"
+        info "Actual state (first 20 lines):"
+        printf '%s\n' "$ist_content" | head -20 >&2
+        return
+    fi
+
+    # Temporary actual-state file for diff
+    ist_tmp=$(mktemp /tmp/mac-snapshot-ist.XXXXXX)
+    printf '%s\n' "$ist_content" > "$ist_tmp"
+
+    diff_output=$(diff "$soll_file" "$ist_tmp" 2>/dev/null || true)
+
+    if [ -z "$diff_output" ]; then
+        ok "No drift — actual = target"
+    else
+        # Show only additions (+) and removals (-)
+        added=$(printf '%s\n' "$diff_output" | grep '^>' | wc -l | tr -d ' ')
+        removed=$(printf '%s\n' "$diff_output" | grep '^<' | wc -l | tr -d ' ')
+        warn "Drift detected: +$added new in system, -$removed in repo but not in system"
+        printf '%s\n' "$diff_output" | head -40 >&2
+        if [ "$(printf '%s\n' "$diff_output" | wc -l)" -gt 40 ]; then
+            info "(... and more lines)"
+        fi
+
+        if [ "$WRITE_DIFFS" = "1" ] && [ "$DRY_RUN" = "0" ]; then
+            printf '%s\n' "$diff_output" > "$SNAP_DIR/proposal-${vorschlag_name}.diff"
+            info "Proposal saved: $SNAP_DIR/proposal-${vorschlag_name}.diff"
+            info "Review and merge into repo manually — NEVER apply automatically!"
+        fi
+    fi
+
+    rm -f "$ist_tmp"
+}
+
+# =============================================================================
+# 1. HOMEBREW — brew bundle dump
+# =============================================================================
+step "Capturing Homebrew actual state"
+
+if have brew; then
+    brew_ist=$(brew bundle dump --file=- 2>/dev/null || echo "# brew bundle dump failed")
+    write_ist "brew-actual.txt" "$brew_ist"
+
+    soll_brewfile="$REPO_ROOT/Brewfile"
+    show_diff "Brewfile (target vs. actual)" "$soll_brewfile" "$brew_ist" "brewfile"
+else
+    warn "brew not found."
+fi
+
+# =============================================================================
+# 2. NPM GLOBALS
+# =============================================================================
+step "Capturing global npm packages actual state"
+
+if have npm; then
+    # Format: @scope/package@version or package@version, one per line
+    npm_ist=$(npm list -g --depth=0 --parseable 2>/dev/null | \
+        awk -F/ '{print $NF}' | grep -v '^npm$' | sort || echo "")
+    write_ist "npm-globals-actual.txt" "$npm_ist"
+
+    soll_npm="$REPO_ROOT/automation/manifests/npm-globals.txt"
+    # Target file: strip comments and blank lines for comparison
+    if [ -f "$soll_npm" ]; then
+        soll_npm_clean=$(grep -v '^#' "$soll_npm" | grep -v '^[[:space:]]*$' | sort)
+        show_diff "npm globals" <(printf '%s\n' "$soll_npm_clean") "$npm_ist" "npm-globals"
+    else
+        info "automation/manifests/npm-globals.txt not yet present."
+    fi
+fi
+
+# =============================================================================
+# 3. VS CODE EXTENSIONS
+# =============================================================================
+step "Capturing VS Code extensions actual state"
+
+CODE_BIN=""
+if have code; then
+    CODE_BIN="code"
+elif [ -f "/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code" ]; then
+    CODE_BIN="/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code"
+fi
+
+if [ -n "$CODE_BIN" ]; then
+    vscode_ist=$("$CODE_BIN" --list-extensions 2>/dev/null | sort || echo "")
+    write_ist "vscode-extensions-actual.txt" "$vscode_ist"
+
+    soll_vscode="$REPO_ROOT/config/vscode-extensions.txt"
+    show_diff "VS Code extensions" "$soll_vscode" "$vscode_ist" "vscode-extensions"
+else
+    warn "VS Code not found."
+fi
+
+# =============================================================================
+# 4. OLLAMA MODELS
+# =============================================================================
+step "Capturing Ollama models actual state"
+
+if have ollama; then
+    if curl -sf --max-time 3 http://localhost:11434/api/tags >/dev/null 2>&1; then
+        ollama_ist=$(ollama list 2>/dev/null | awk 'NR>1{print $1}' | sort || echo "")
+        write_ist "ollama-models-actual.txt" "$ollama_ist"
+
+        soll_ollama="$REPO_ROOT/automation/manifests/ollama-models.txt"
+        if [ -f "$soll_ollama" ]; then
+            soll_ollama_clean=$(grep -v '^#' "$soll_ollama" | grep -v '^[[:space:]]*$' | sort)
+            show_diff "Ollama models" <(printf '%s\n' "$soll_ollama_clean") "$ollama_ist" "ollama-models"
+        fi
+    else
+        warn "Ollama not reachable — skipping model comparison."
+    fi
+fi
+
+# =============================================================================
+# 5. VERSIONS (Node, Python, uv)
+# =============================================================================
+step "Capturing version state"
+
+{
+    printf "# Versions — %s\n\n" "$(date '+%Y-%m-%d %H:%M:%S')"
+    printf "node=%s\n" "$(node --version 2>/dev/null || echo 'not found')"
+    printf "npm=%s\n" "$(npm --version 2>/dev/null || echo 'not found')"
+    printf "pnpm=%s\n" "$(pnpm --version 2>/dev/null || echo 'not found')"
+    printf "bun=%s\n" "$(bun --version 2>/dev/null || echo 'not found')"
+    printf "python3=%s\n" "$(python3 --version 2>/dev/null | awk '{print $2}' || echo 'not found')"
+    printf "uv=%s\n" "$(uv --version 2>/dev/null | awk '{print $2}' || echo 'not found')"
+    printf "brew=%s\n" "$(brew --version 2>/dev/null | head -1 | awk '{print $2}' || echo 'not found')"
+    printf "ollama=%s\n" "$(ollama --version 2>/dev/null | awk '{print $NF}' || echo 'not found')"
+    printf "macos=%s\n" "$(sw_vers -productVersion 2>/dev/null || echo 'unknown')"
+} > /tmp/mac-snapshot-versions.txt
+version_content=$(cat /tmp/mac-snapshot-versions.txt)
+rm -f /tmp/mac-snapshot-versions.txt
+write_ist "versions-actual.txt" "$version_content"
+info "Versions:"
+printf '%s\n' "$version_content" | grep -v '^#' >&2
+
+# =============================================================================
+# Summary
+# =============================================================================
+printf "\n" >&2
+step "Summary"
+if [ "$DRY_RUN" = "0" ]; then
+    ok "Actual-state files in: $SNAP_DIR"
+    if [ "$WRITE_DIFFS" = "1" ]; then
+        ok "Diff proposals in: $SNAP_DIR/proposal-*.diff"
+        warn "NEVER apply these proposals automatically — review and commit to repo manually!"
+    else
+        info "Use --write to save diff proposals to local/snapshot/proposal-*.diff."
+    fi
+fi

@@ -1,0 +1,395 @@
+#!/usr/bin/env bash
+# =============================================================================
+# automation/bin/sunset — State machine for the tool registry
+#
+# Purpose:  Controls the lifecycle of tools in manifests/tools.yaml:
+#           candidate→active, active→deprecated, deprecated→sunset.
+#           Records every decision in CHANGELOG.md (Unreleased section).
+#           NEVER installs or uninstalls software — documentation only.
+# Problem:  Tools become outdated or obsolete. The state machine enforces
+#           a documented grace period (default: 90 days) and prevents
+#           silent decisions.
+# Changes:  manifests/tools.yaml (status, sunset, replaced_by), CHANGELOG.md
+# Requires: bash 3.2+, yq (v4+), jq
+# Usage:    automation/bin/sunset propose <id> --reason "..."
+#           automation/bin/sunset confirm <id> [--force --reason "..."]
+#           automation/bin/sunset revive <id> --reason "..."
+#           automation/bin/sunset adopt <id>
+#           automation/bin/sunset list [--status <s>] [--due]
+#           automation/bin/sunset --help
+# =============================================================================
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+AUTOMATION_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+# REPO_ROOT is set indirectly via lib-currency.sh (available after sourcing)
+# shellcheck disable=SC2034
+REPO_ROOT="$(cd "$AUTOMATION_DIR/.." && pwd)"
+
+source "$AUTOMATION_DIR/lib-currency.sh"
+
+KARENZ_TAGE=90
+
+usage() {
+    cat >&2 <<'EOF'
+Usage: sunset <SUBCOMMAND> [OPTIONS]
+
+Subcommands:
+  propose <id>  [--reason "..."] [--replaced-by <id>]
+                active → deprecated (sunset date = today + 90 days)
+  confirm <id>  [--force --reason "..."]
+                deprecated → sunset (only when date is reached)
+  revive  <id>  --reason "..."
+                deprecated|sunset → active
+  adopt   <id>
+                candidate → active
+  list    [--status <s>] [--due]
+                Overview; --due shows only due deprecated entries
+
+Options:
+  --reason "..."  Required for propose, revive, and force-confirm
+  --replaced-by   id of the replacement tool
+  --force         Forces confirm before the grace period expires
+  --help          Show this help
+
+Important: this command only changes the registry and changelog.
+           Software is not installed or uninstalled.
+           Removal: scripts/90-cleanup-legacy.sh (or the respective module)
+EOF
+}
+
+# Validates that an ID exists in the registry; returns 2 if not
+require_id() {
+    local id="$1"
+    local existing
+    existing=$(registry_get "$id" "id" 2>/dev/null || echo "")
+    if [ -z "$existing" ] || [ "$existing" = "null" ]; then
+        err "ID not found in registry: $id"
+    fi
+}
+
+# =============================================================================
+# propose: active → deprecated
+# =============================================================================
+cmd_propose() {
+    local id=""
+    local reason=""
+    local replaced_by="null"
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --reason) reason="${2:-}"; shift 2 ;;
+            --replaced-by) replaced_by="${2:-null}"; shift 2 ;;
+            --help|-h) usage; exit 0 ;;
+            -*) warn "Unknown option: $1"; shift ;;
+            *) id="$1"; shift ;;
+        esac
+    done
+
+    if [ -z "$id" ]; then
+        err "ID missing. Usage: sunset propose <id> --reason \"...\""
+    fi
+    if [ -z "$reason" ]; then
+        err "--reason is required for propose"
+    fi
+
+    require_id "$id"
+
+    local current_status
+    current_status=$(registry_get "$id" "status")
+    if [ "$current_status" != "active" ]; then
+        err "Tool '$id' has status '$current_status' — propose expects 'active'"
+    fi
+
+    local name
+    name=$(registry_get "$id" "name")
+    local sunset_date
+    sunset_date=$(date_add_days "$KARENZ_TAGE")
+
+    step "Deprecation proposed: $name"
+    info "  Status:      active → deprecated"
+    info "  Sunset date: $sunset_date (in $KARENZ_TAGE days)"
+    info "  Reason:      $reason"
+    [ "$replaced_by" != "null" ] && info "  Replaced by: $replaced_by"
+
+    registry_set "$id" "status" "deprecated"
+    registry_set "$id" "sunset" "$sunset_date"
+    registry_set "$id" "reviewed" "$(today)"
+    if [ "$replaced_by" != "null" ]; then
+        registry_set "$id" "replaced_by" "$replaced_by"
+    fi
+
+    changelog_add_entry "Deprecated" \
+        "$name ($id): Marked as deprecated — $reason. Sunset: $sunset_date"
+
+    ok "Done. Next step after $sunset_date:"
+    info "  automation/bin/sunset confirm $id"
+}
+
+# =============================================================================
+# confirm: deprecated → sunset
+# =============================================================================
+cmd_confirm() {
+    local id=""
+    local force=0
+    local reason=""
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --force) force=1; shift ;;
+            --reason) reason="${2:-}"; shift 2 ;;
+            --help|-h) usage; exit 0 ;;
+            -*) warn "Unknown option: $1"; shift ;;
+            *) id="$1"; shift ;;
+        esac
+    done
+
+    if [ -z "$id" ]; then
+        err "ID missing. Usage: sunset confirm <id>"
+    fi
+
+    require_id "$id"
+
+    local current_status
+    current_status=$(registry_get "$id" "status")
+    if [ "$current_status" != "deprecated" ]; then
+        err "Tool '$id' has status '$current_status' — confirm expects 'deprecated'"
+    fi
+
+    local name sunset_date
+    name=$(registry_get "$id" "name")
+    sunset_date=$(registry_get "$id" "sunset")
+
+    # Check grace period
+    if [ -n "$sunset_date" ] && [ "$sunset_date" != "null" ]; then
+        if ! date_is_due "$sunset_date"; then
+            if [ "$force" = "1" ]; then
+                if [ -z "$reason" ]; then
+                    err "--force requires --reason"
+                fi
+                warn "Grace period not yet expired (until $sunset_date) — forced: $reason"
+            else
+                err "Grace period not yet expired: $sunset_date. Use --force --reason \"...\" to override."
+            fi
+        fi
+    fi
+
+    step "Sunset confirmed: $name"
+    info "  Status: deprecated → sunset"
+    info "  The registry records the decision."
+    warn "  Software removal: scripts/90-cleanup-legacy.sh (or the respective module script)"
+    warn "  After removal: delete the line from tools.yaml + update CHANGELOG"
+
+    registry_set "$id" "status" "sunset"
+    registry_set "$id" "reviewed" "$(today)"
+
+    local log_text="$name ($id): Sunset confirmed"
+    [ -n "$reason" ] && log_text="$log_text — $reason"
+    changelog_add_entry "Deprecated" "$log_text"
+
+    ok "Done. Tool '$id' is now in status 'sunset'."
+    ok "Next step: uninstall software via scripts/90-cleanup-legacy.sh"
+}
+
+# =============================================================================
+# revive: deprecated|sunset → active
+# =============================================================================
+cmd_revive() {
+    local id=""
+    local reason=""
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --reason) reason="${2:-}"; shift 2 ;;
+            --help|-h) usage; exit 0 ;;
+            -*) warn "Unknown option: $1"; shift ;;
+            *) id="$1"; shift ;;
+        esac
+    done
+
+    if [ -z "$id" ]; then
+        err "ID missing. Usage: sunset revive <id> --reason \"...\""
+    fi
+    if [ -z "$reason" ]; then
+        err "--reason is required for revive"
+    fi
+
+    require_id "$id"
+
+    local current_status
+    current_status=$(registry_get "$id" "status")
+    if [ "$current_status" != "deprecated" ] && [ "$current_status" != "sunset" ]; then
+        err "Tool '$id' has status '$current_status' — revive expects 'deprecated' or 'sunset'"
+    fi
+
+    local name
+    name=$(registry_get "$id" "name")
+
+    step "Tool reactivated: $name"
+    info "  Status: $current_status → active"
+    info "  Reason: $reason"
+
+    registry_set "$id" "status" "active"
+    registry_set_null "$id" "sunset"
+    registry_set "$id" "reviewed" "$(today)"
+
+    changelog_add_entry "Changed" \
+        "$name ($id): Reactivated (was $current_status) — $reason"
+
+    ok "Done. Tool '$id' is 'active' again."
+    info "Check whether implementation lists (Brewfile, etc.) need to be updated."
+}
+
+# =============================================================================
+# adopt: candidate → active
+# =============================================================================
+cmd_adopt() {
+    local id=""
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --help|-h) usage; exit 0 ;;
+            -*) warn "Unknown option: $1"; shift ;;
+            *) id="$1"; shift ;;
+        esac
+    done
+
+    if [ -z "$id" ]; then
+        err "ID missing. Usage: sunset adopt <id>"
+    fi
+
+    require_id "$id"
+
+    local current_status
+    current_status=$(registry_get "$id" "status")
+    if [ "$current_status" != "candidate" ]; then
+        err "Tool '$id' has status '$current_status' — adopt expects 'candidate'"
+    fi
+
+    local name
+    name=$(registry_get "$id" "name")
+
+    step "Tool adopted: $name"
+    info "  Status: candidate → active"
+
+    registry_set "$id" "status" "active"
+    registry_set "$id" "reviewed" "$(today)"
+
+    changelog_add_entry "Added" \
+        "$name ($id): Adopted from evaluation (candidate → active)"
+
+    ok "Done. Tool '$id' is now 'active'."
+    info "Make sure it is in the implementation lists (Brewfile, etc.)."
+}
+
+# =============================================================================
+# list: overview
+# =============================================================================
+cmd_list() {
+    local filter_status=""
+    local only_due=0
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --status) filter_status="${2:-}"; shift 2 ;;
+            --due) only_due=1; shift ;;
+            --help|-h) usage; exit 0 ;;
+            -*) warn "Unknown option: $1"; shift ;;
+            *) warn "Unknown argument: $1"; shift ;;
+        esac
+    done
+
+    require_yq
+
+    printf '\n%s%s=== Tool status ===%s\n\n' "$_BOLD" "$_CYAN" "$_RESET" >&2
+
+    local all_ids
+    all_ids=$(registry_list_ids)
+
+    local count=0
+    local id status sunset_date name why
+
+    while IFS= read -r id; do
+        [ -z "$id" ] && continue
+
+        status=$(registry_get "$id" "status")
+        name=$(registry_get "$id" "name")
+        sunset_date=$(registry_get "$id" "sunset")
+        why=$(registry_get "$id" "why")
+
+        # Status-Filter
+        [ -n "$filter_status" ] && [ "$status" != "$filter_status" ] && continue
+
+        # --due: only deprecated entries that are due
+        if [ "$only_due" = "1" ]; then
+            [ "$status" != "deprecated" ] && continue
+            if [ -n "$sunset_date" ] && [ "$sunset_date" != "null" ]; then
+                date_is_due "$sunset_date" || continue
+            fi
+        fi
+
+        count=$((count + 1))
+
+        local color
+        case "$status" in
+            active)     color="$_GREEN" ;;
+            candidate)  color="$_BLUE" ;;
+            deprecated) color="$_YELLOW" ;;
+            sunset)     color="$_RED" ;;
+            *)          color="$_RESET" ;;
+        esac
+
+        printf '%s%-12s%s  %-35s' "$color" "[$status]" "$_RESET" "$name" >&2
+
+        if [ -n "$sunset_date" ] && [ "$sunset_date" != "null" ]; then
+            if date_is_due "$sunset_date"; then
+                printf '  %sDUE: %s%s' "$_RED" "$sunset_date" "$_RESET" >&2
+            else
+                printf '  Sunset: %s' "$sunset_date" >&2
+            fi
+        fi
+
+        printf '\n' >&2
+        printf '             %s%s%s\n' "$_CYAN" "$why" "$_RESET" >&2
+
+        if [ "$status" = "deprecated" ] && date_is_due "${sunset_date:-2099-01-01}"; then
+            printf '    %s→ Ready for: sunset confirm %s%s\n' "$_YELLOW" "$id" "$_RESET" >&2
+        fi
+
+    done <<EOF
+$all_ids
+EOF
+
+    printf '\n%s%d entries listed%s\n\n' "$_BOLD" "$count" "$_RESET" >&2
+}
+
+# =============================================================================
+# Einstieg
+# =============================================================================
+require_yq
+require_jq
+
+if [ ! -f "$TOOLS_YAML" ]; then
+    err "Registry not found: $TOOLS_YAML"
+fi
+
+if [ $# -eq 0 ] || [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
+    usage
+    exit 0
+fi
+
+SUBCMD="${1}"
+shift
+
+case "$SUBCMD" in
+    propose) cmd_propose "$@" ;;
+    confirm) cmd_confirm "$@" ;;
+    revive)  cmd_revive  "$@" ;;
+    adopt)   cmd_adopt   "$@" ;;
+    list)    cmd_list    "$@" ;;
+    *)
+        warn "Unknown subcommand: $SUBCMD"
+        usage
+        exit 2
+        ;;
+esac

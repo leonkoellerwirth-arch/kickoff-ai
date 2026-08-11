@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -s http://127.0.0.1*)",
+      "Bash(npm test:*)",
+      "Bash(git status)",
+      "Read(CLAUDE.md)",
+      "Bash(npx tsc:*)",
+      "Bash(node_modules/.bin/tsc:*)"
+    ],
+    "deny": [
+      "Read(**/.env)",
+      "Read(**/secrets/**)"
+    ],
+    "ask": [
+      "Bash(rm *)"
+    ],
+    "defaultMode": "auto"
+  },
+  "model": "claude-opus-5[1m]",
+  "tui": "fullscreen",
+  "theme": "dark",
+  "remoteControlAtStartup": true,
+  "skipDangerousModePermissionPrompt": true,
+  "skipWorkflowUsageWarning": true,
+  "skipAutoPermissionPrompt": true,
+  "agentPushNotifEnabled": true,
+  "_note": "Personal settings such as hooks, plugins and model overrides in ~/.claude/settings.local.json"
+}

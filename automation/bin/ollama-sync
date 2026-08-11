@@ -1,0 +1,238 @@
+#!/usr/bin/env bash
+# =============================================================================
+# automation/bin/ollama-sync — Manage Ollama models against manifest
+#
+# Problem:    Ollama is installed in three places (brew formula + cask + as
+#             Docker container, INVENTORY §6, gap analysis A.12). 4 models
+#             (~18 GB). No declarative overview of which models are desired.
+# Does:       Reconciles models against automation/manifests/ollama-models.txt:
+#             pulls missing ones, lists extras, updates existing ones.
+#             Shows disk usage per model.
+#             Warns about multiple installations with a resolution guide.
+# Changes:    Pulls/updates Ollama models (with --sync). Default: check only.
+# Usage:      ollama-sync [--sync] [--dry-run] [--help]
+# =============================================================================
+set -euo pipefail
+
+AUTOMATION_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$AUTOMATION_DIR/lib-automation.sh"
+
+MANIFEST="$_REPO_ROOT/automation/manifests/ollama-models.txt"
+
+# =============================================================================
+# Argument parsing
+# =============================================================================
+SYNC=0
+
+for arg in "$@"; do
+    case "$arg" in
+        --sync)     SYNC=1 ;;
+        --dry-run)  DRY_RUN=1 ;;
+        --help|-h)
+            cat >&2 <<'EOF'
+Usage: ollama-sync [--sync] [--dry-run] [--help]
+
+  Compares installed Ollama models with the manifest
+  (automation/manifests/ollama-models.txt).
+
+Options:
+  --sync      Pull missing models + update existing ones (opt-in)
+  --dry-run   Show what would be synced
+  --help      This help
+
+Manifest: automation/manifests/ollama-models.txt
+  (one model ID per line, comments with #)
+
+Examples:
+  ollama-sync               # Check only (no pull)
+  ollama-sync --sync        # Pull missing models + update
+  ollama-sync --sync --dry-run
+EOF
+            exit 0
+            ;;
+        *)
+            err "Unknown option: $arg (--help for help)"
+            ;;
+    esac
+done
+
+# =============================================================================
+# Prerequisites
+# =============================================================================
+if ! have ollama; then
+    err "ollama not found. Install: brew install ollama"
+fi
+
+if ! curl -sf --max-time 5 http://localhost:11434/api/tags >/dev/null 2>&1; then
+    err "Ollama is not running (http://localhost:11434 not reachable). Start: ollama serve"
+fi
+
+if [ ! -f "$MANIFEST" ]; then
+    err "Manifest not found: $MANIFEST"
+fi
+
+# =============================================================================
+# Check for multiple installations
+# =============================================================================
+step "Ollama installation check"
+
+installations=0
+install_warnings=""
+
+# brew formula
+if brew list --formula 2>/dev/null | grep -qx "ollama"; then
+    installations=$((installations + 1))
+    install_warnings="${install_warnings}  • brew formula (ollama) — CLI service\n"
+fi
+
+# brew cask (ollama-app)
+if brew list --cask 2>/dev/null | grep -qx "ollama"; then
+    installations=$((installations + 1))
+    install_warnings="${install_warnings}  • brew cask (ollama) — macOS app with GUI\n"
+fi
+
+# Docker container with Ollama
+ollama_container=$(docker ps --format "{{.Names}} {{.Image}}" 2>/dev/null | \
+    grep -i "ollama" | awk '{print $1}' || true)
+if [ -n "$ollama_container" ]; then
+    installations=$((installations + 1))
+    install_warnings="${install_warnings}  • Docker container: $ollama_container (CPU-only, no Metal GPU!)\n"
+fi
+
+if [ "$installations" -gt 1 ]; then
+    warn "Multiple installations detected ($installations instances):"
+    printf '%b' "$install_warnings" >&2
+    warn "Recommendation: keep only the brew formula."
+    info "Resolution:"
+    info "  brew uninstall --cask ollama     # remove GUI app (if not needed)"
+    info "  docker stop <container>           # stop container"
+    info "  # use only brew install ollama (formula)"
+    printf "\n" >&2
+else
+    ok "Ollama: single installation ($installations instance)"
+fi
+
+ollama_ver=$(ollama --version 2>/dev/null | awk '{print $NF}' || echo "?")
+info "Ollama version: $ollama_ver"
+
+# =============================================================================
+# Actual state: installed models
+# =============================================================================
+step "Installed models"
+
+installed_models=""
+while IFS= read -r line; do
+    [ -z "$line" ] && continue
+    name=$(printf '%s' "$line" | awk '{print $1}')
+    size=$(printf '%s' "$line" | awk '{print $3, $4}')
+    [ "$name" = "NAME" ] && continue
+    installed_models="${installed_models}${name}\n"
+    info "  $(printf '%-35s' "$name") $size"
+done < <(ollama list 2>/dev/null || true)
+
+printf "\n" >&2
+
+# Total disk usage
+total_size=$(du -sh "$HOME/.ollama/models" 2>/dev/null | awk '{print $1}' || echo "?")
+info "Total model storage: $total_size"
+
+# =============================================================================
+# Target state: manifest
+# =============================================================================
+step "Manifest: $MANIFEST"
+
+manifest_models=""
+while IFS= read -r line; do
+    # Skip comments and blank lines
+    case "$line" in
+        '#'*|'') continue ;;
+    esac
+    # Model ID: first word (without trailing comment)
+    model_id=$(printf '%s' "$line" | awk '{print $1}')
+    [ -z "$model_id" ] && continue
+    manifest_models="${manifest_models}${model_id}\n"
+    info "  $model_id"
+done < "$MANIFEST"
+
+printf "\n" >&2
+
+# =============================================================================
+# Comparison: missing / extra
+# =============================================================================
+step "Comparing actual vs. target"
+
+missing_models=""
+extra_models=""
+
+# Missing models (in manifest, not installed)
+while IFS= read -r model; do
+    [ -z "$model" ] && continue
+    if ! printf '%b' "$installed_models" | grep -qx "$model"; then
+        missing_models="${missing_models}${model}\n"
+        warn "MISSING: $model"
+    fi
+done < <(printf '%b' "$manifest_models")
+
+# Extra models (installed, not in manifest)
+while IFS= read -r model; do
+    [ -z "$model" ] && continue
+    if ! printf '%b' "$manifest_models" | grep -qx "$model"; then
+        extra_models="${extra_models}${model}\n"
+        info "EXTRA (not in manifest): $model"
+    fi
+done < <(printf '%b' "$installed_models")
+
+if [ -z "$missing_models" ] && [ -z "$extra_models" ]; then
+    ok "Actual = target. All manifest models are installed."
+fi
+
+if [ -n "$extra_models" ]; then
+    info "Extra models (add to manifest or remove manually with 'ollama rm'):"
+    printf '%b' "$extra_models" | while IFS= read -r m; do
+        [ -z "$m" ] && continue
+        info "  ollama rm $m"
+    done
+fi
+
+# =============================================================================
+# Sync: pull missing models + update all existing
+# =============================================================================
+if [ "$SYNC" = "1" ]; then
+    step "Sync (pull missing + update existing)"
+
+    if [ -n "$missing_models" ]; then
+        printf '%b' "$missing_models" | while IFS= read -r model; do
+            [ -z "$model" ] && continue
+            if [ "$DRY_RUN" = "1" ]; then
+                info "[dry-run] Would pull: ollama pull $model"
+            else
+                info "Pulling: $model"
+                run ollama pull "$model"
+                ok "Done: $model"
+            fi
+        done
+    fi
+
+    # Update existing manifest models
+    info "Updating existing models..."
+    while IFS= read -r model; do
+        [ -z "$model" ] && continue
+        if printf '%b' "$installed_models" | grep -qx "$model"; then
+            if [ "$DRY_RUN" = "1" ]; then
+                info "[dry-run] Would update: ollama pull $model"
+            else
+                info "Updating: $model"
+                run ollama pull "$model"
+                ok "Updated: $model"
+            fi
+        fi
+    done < <(printf '%b' "$manifest_models")
+
+    ok "Sync complete."
+else
+    if [ -n "$missing_models" ]; then
+        info "Use --sync to pull missing models."
+    fi
+fi
+
+printf "\n" >&2

@@ -1,0 +1,45 @@
+# =============================================================================
+# ~/.zprofile — Login shell configuration
+#
+# Loaded once at login (before .zshrc).
+# Contains PATH definitions and tool initializations needed only once
+# at session start.
+# Machine-specific settings → ~/.zprofile.local
+# =============================================================================
+
+# =============================================================================
+# Homebrew — MUST come before all other PATH entries,
+# so that brew tools (e.g. git) take precedence over macOS built-in tools.
+# =============================================================================
+if [ -f "/opt/homebrew/bin/brew" ]; then
+    eval "$(/opt/homebrew/bin/brew shellenv)"
+fi
+
+# =============================================================================
+# Visual Studio Code CLI (code)
+# Once, correctly — not duplicated as in the old zprofile
+# =============================================================================
+VSCODE_BIN="/Applications/Visual Studio Code.app/Contents/Resources/app/bin"
+if [ -d "$VSCODE_BIN" ]; then
+    export PATH="$PATH:$VSCODE_BIN"
+fi
+
+# =============================================================================
+# JetBrains Toolbox CLI scripts
+# =============================================================================
+JETBRAINS_SCRIPTS="$HOME/Library/Application Support/JetBrains/Toolbox/scripts"
+if [ -d "$JETBRAINS_SCRIPTS" ]; then
+    export PATH="$PATH:$JETBRAINS_SCRIPTS"
+fi
+
+# =============================================================================
+# uv shell initialization (recommended for uv itself)
+# =============================================================================
+if [ -f "$HOME/.local/bin/env" ]; then
+    . "$HOME/.local/bin/env"
+fi
+
+# =============================================================================
+# Machine-specific overrides (not in repo, not published)
+# =============================================================================
+[ -f "$HOME/.zprofile.local" ] && source "$HOME/.zprofile.local"

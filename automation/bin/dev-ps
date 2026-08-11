@@ -1,0 +1,109 @@
+#!/usr/bin/env bash
+# =============================================================================
+# automation/bin/dev-ps — Compact overview of running Docker containers
+#
+# Problem:    `docker ps` is hard to read for 16+ containers; doesn't immediately
+#             show uptime, memory, and the associated project (INVENTORY §5).
+# Does:       Shows a compact table of all running containers with name, image,
+#             uptime, CPU, memory usage, and status. Optionally filtered
+#             by a project.
+# Changes:    Nothing — read-only.
+# Usage:      dev-ps [<filter>] [--help]
+# =============================================================================
+set -euo pipefail
+
+AUTOMATION_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$AUTOMATION_DIR/lib-automation.sh"
+
+# =============================================================================
+# Argument-Parsing
+# =============================================================================
+FILTER=""
+
+for arg in "$@"; do
+    case "$arg" in
+        --help|-h)
+            cat >&2 <<'EOF'
+Usage: dev-ps [<filter>] [--help]
+
+  Shows all running Docker containers in a compact view with uptime and memory usage.
+
+Options:
+  <filter>    Show only containers whose name contains <filter>
+  --help      This help
+
+Examples:
+  dev-ps                   # All running containers
+  dev-ps myproject         # Only containers with "myproject" in the name
+  dev-ps mysql             # Only MySQL containers
+EOF
+            exit 0
+            ;;
+        -*)
+            err "Unknown option: $arg (--help for help)"
+            ;;
+        *)
+            FILTER="$arg"
+            ;;
+    esac
+done
+
+require_docker
+
+# =============================================================================
+# Show running containers
+# =============================================================================
+step "Running Docker containers"
+
+running=$(docker ps --format "{{.Names}}" 2>/dev/null || true)
+if [ -z "$running" ]; then
+    info "No running containers."
+    exit 0
+fi
+
+# Apply filter
+if [ -n "$FILTER" ]; then
+    running=$(printf '%s\n' "$running" | grep "$FILTER" || true)
+    if [ -z "$running" ]; then
+        info "No containers with '$FILTER' in the name."
+        exit 0
+    fi
+fi
+
+# Header row
+printf "\n%-35s %-25s %-15s %-8s %-12s %-8s\n" \
+    "CONTAINER" "IMAGE" "UPTIME" "CPU" "MEMORY" "STATUS" >&2
+printf "%-35s %-25s %-15s %-8s %-12s %-8s\n" \
+    "---" "---" "---" "---" "---" "---" >&2
+
+# Stats for all (or filtered) containers
+total=0
+while IFS= read -r stats_line; do
+    [ -z "$stats_line" ] && continue
+    name=$(printf '%s' "$stats_line" | awk '{print $1}')
+    cpu=$(printf '%s' "$stats_line" | awk '{print $2}')
+    mem_usage=$(printf '%s' "$stats_line" | awk '{print $3}')
+
+    # Uptime and status from docker ps
+    uptime=$(docker ps --filter "name=^${name}$" --format "{{.RunningFor}}" 2>/dev/null || echo "?")
+    image=$(docker ps --filter "name=^${name}$" --format "{{.Image}}" 2>/dev/null || echo "?")
+    status=$(docker ps --filter "name=^${name}$" --format "{{.Status}}" 2>/dev/null || echo "?")
+
+    # Truncate to 25 chars for table
+    image_short="${image:0:25}"
+    status_short="${status:0:8}"
+
+    printf "%-35s %-25s %-15s %-8s %-12s %-8s\n" \
+        "${name:0:35}" "$image_short" "${uptime:0:15}" "$cpu" "${mem_usage:0:12}" "$status_short" >&2
+    total=$((total + 1))
+done < <(docker stats --no-stream --format "{{.Name}} {{.CPUPerc}} {{.MemUsage}}" 2>/dev/null | \
+         grep -F "${FILTER:-}" || true)
+
+printf "\n" >&2
+info "$total containers running."
+if [ -n "$FILTER" ]; then
+    info "(Filtered by: '$FILTER')"
+fi
+printf "\n" >&2
+info "Stack starten:  dev-up <projekt>"
+info "Stack stoppen:  dev-down <projekt> | dev-down --all"

@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+    "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+    dev.kickoff.mac-clean.plist
+    Weekly storage report (Saturday 10:00).
+    Mode: dry-run (default for mac-clean) — REPORT ONLY, NO deletion.
+    Log: ~/Library/Logs/kickoff/mac-clean.log
+    Install: automation/launchd/install-launchd.sh
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>dev.kickoff.mac-clean</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>__BIN_DIR__/mac-clean</string>
+    </array>
+
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Weekday</key>
+        <integer>6</integer>
+        <key>Hour</key>
+        <integer>10</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>StandardOutPath</key>
+    <string>__HOME__/Library/Logs/kickoff/mac-clean.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>__HOME__/Library/Logs/kickoff/mac-clean.log</string>
+
+    <key>Nice</key>
+    <integer>10</integer>
+
+    <key>LowPriorityIO</key>
+    <true/>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <key>HOME</key>
+        <string>__HOME__</string>
+    </dict>
+</dict>
+</plist>
