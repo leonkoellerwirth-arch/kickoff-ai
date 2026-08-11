@@ -1,0 +1,414 @@
+#!/usr/bin/env bash
+# =============================================================================
+# automation/bin/mac-update — One command for all system updates
+#
+# Problem:    brew (~275 formulae), 11 global npm packages, 4 AI CLIs, 4 Ollama models,
+#             VS Code extensions are all updated manually one by one (INVENTORY §2-§7).
+#             No consistent workflow, no log.
+# Does:       Updates all components in a fixed order:
+#             brew, npm global, pnpm/bun self-update, uv, Claude Code, Codex CLI,
+#             Gemini CLI, Ollama + models, VS Code extensions, App Store (mas),
+#             Xcode CLT. Writes log to local/updates/<date>.md.
+# Changes:    Installed software (updates). With --dry-run, check only.
+# Usage:      mac-update [--dry-run] [--only <group>] [--skip <group>] [--help]
+#             Groups: brew npm pnpm bun uv claude codex gemini ollama vscode mas xcode
+# =============================================================================
+set -euo pipefail
+
+AUTOMATION_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$AUTOMATION_DIR/lib-automation.sh"
+
+# =============================================================================
+# Argument-Parsing
+# =============================================================================
+ONLY_GROUP=""
+SKIP_GROUPS=""
+LOG_DATE=$(date '+%Y-%m-%d')
+LOG_TIME=$(date '+%H:%M:%S')
+
+for arg in "$@"; do
+    case "$arg" in
+        --dry-run)  DRY_RUN=1 ;;
+        --only)     ONLY_NEXT=1 ;;
+        --skip)     SKIP_NEXT=1 ;;
+        --help|-h)
+            cat >&2 <<'EOF'
+Usage: mac-update [--dry-run] [--only <group>] [--skip <group>] [--help]
+
+  Updates all components of the development system.
+
+Options:
+  --dry-run          Checks what could be updated without installing
+  --only <group>     Update one group only
+  --skip <group>     Skip a group (can be used multiple times)
+  --help             Show this help
+
+Groups:
+  brew      Homebrew update + upgrade + cleanup
+  npm       Update global npm packages
+  pnpm      pnpm self-update
+  bun       bun self-update
+  uv        uv self-update
+  claude    Update Claude Code CLI
+  codex     Update OpenAI Codex CLI
+  gemini    Gemini CLI (via brew)
+  ollama    Update Ollama + models
+  vscode    Update VS Code extensions
+  mas       Update App Store apps via mas
+  xcode     Check Xcode Command Line Tools
+
+Output: log/updates/<date>.md
+
+Examples:
+  mac-update                    # Update all groups
+  mac-update --dry-run          # Check only
+  mac-update --only brew        # Homebrew only
+  mac-update --skip mas --skip vscode
+EOF
+            exit 0
+            ;;
+        *)
+            if [ "${ONLY_NEXT:-0}" = "1" ]; then
+                ONLY_GROUP="$arg"
+                ONLY_NEXT=0
+            elif [ "${SKIP_NEXT:-0}" = "1" ]; then
+                SKIP_GROUPS="${SKIP_GROUPS},${arg},"
+                SKIP_NEXT=0
+            fi
+            ;;
+    esac
+done
+
+# =============================================================================
+# Run group?
+# =============================================================================
+should_run() {
+    local group="$1"
+    # --only takes priority
+    if [ -n "$ONLY_GROUP" ]; then
+        [ "$ONLY_GROUP" = "$group" ] && return 0
+        return 1
+    fi
+    # --skip
+    case "$SKIP_GROUPS" in
+        *",${group},"*) return 1 ;;
+    esac
+    return 0
+}
+
+# =============================================================================
+# Log setup
+# =============================================================================
+ensure_local_dir "updates"
+LOG_FILE="$LOCAL_DIR/updates/${LOG_DATE}.md"
+
+log_write() {
+    printf '%s\n' "$*" >> "$LOG_FILE"
+}
+
+log_cmd_result() {
+    local label="$1"
+    local result="$2"
+    log_write "### $label"
+    log_write "\`\`\`"
+    log_write "$result"
+    log_write "\`\`\`"
+    log_write ""
+}
+
+# Log-Header
+{
+    printf "# mac-update — %s %s\n\n" "$LOG_DATE" "$LOG_TIME"
+    printf "Maschine: %s  \n" "$(hostname)"
+    printf "macOS: %s  \n\n" "$(sw_vers -productVersion)"
+    if [ "$DRY_RUN" = "1" ]; then
+        printf "**Mode: DRY-RUN** (check only, no installation)  \n\n"
+    fi
+} > "$LOG_FILE"
+
+step "=== mac-update ==="
+if [ "$DRY_RUN" = "1" ]; then
+    warn "DRY-RUN: No changes will be made."
+fi
+info "Log: $LOG_FILE"
+printf "\n" >&2
+
+# =============================================================================
+# 1. HOMEBREW
+# =============================================================================
+if should_run "brew"; then
+    step "Homebrew"
+    if ! have brew; then
+        warn "brew not found — skipping."
+    else
+        log_write "## Homebrew"
+        brew_before=$(brew list --formula | wc -l | tr -d ' ')
+        info "Installed formulae: $brew_before"
+
+        run brew update 2>&1 | tee -a "$LOG_FILE" >&2
+        if [ "$DRY_RUN" = "0" ]; then
+            outdated=$(brew outdated 2>/dev/null || true)
+            if [ -n "$outdated" ]; then
+                info "Outdated packages:"
+                printf '%s\n' "$outdated" >&2
+                run brew upgrade 2>&1 | tee -a "$LOG_FILE" >&2
+                run brew cleanup -s 2>/dev/null | tee -a "$LOG_FILE" >&2 || true
+            else
+                info "All formulae up to date."
+            fi
+        else
+            info "[dry-run] Outdated formulae:"
+            brew outdated 2>/dev/null >&2 || true
+        fi
+        ok "Homebrew done."
+    fi
+fi
+
+# =============================================================================
+# 2. NPM GLOBAL
+# =============================================================================
+if should_run "npm"; then
+    step "Global npm packages"
+    if ! have npm; then
+        warn "npm not found — skipping."
+    else
+        log_write "## npm global"
+        info "Currently installed:"
+        npm list -g --depth=0 2>/dev/null >&2 || true
+
+        if [ "$DRY_RUN" = "0" ]; then
+            run npm update -g 2>&1 | tee -a "$LOG_FILE" >&2 || warn "npm update -g had errors"
+        else
+            info "[dry-run] Would run: npm update -g"
+            npm outdated -g 2>/dev/null >&2 || true
+        fi
+        ok "npm global done."
+    fi
+fi
+
+# =============================================================================
+# 3. PNPM
+# =============================================================================
+if should_run "pnpm"; then
+    step "pnpm"
+    if ! have pnpm; then
+        warn "pnpm not found — skipping."
+    else
+        log_write "## pnpm"
+        pnpm_before=$(pnpm --version 2>/dev/null || echo "?")
+        info "pnpm version: $pnpm_before"
+        run pnpm self-update 2>&1 | tee -a "$LOG_FILE" >&2 || warn "pnpm self-update failed"
+        ok "pnpm done."
+    fi
+fi
+
+# =============================================================================
+# 4. BUN
+# =============================================================================
+if should_run "bun"; then
+    step "bun"
+    BUN_BIN="$HOME/.bun/bin/bun"
+    if ! have bun && [ ! -f "$BUN_BIN" ]; then
+        warn "bun not found — skipping."
+    else
+        log_write "## bun"
+        bun_before=$(bun --version 2>/dev/null || "$BUN_BIN" --version 2>/dev/null || echo "?")
+        info "bun version: $bun_before"
+        if [ "$DRY_RUN" = "0" ]; then
+            run bun upgrade 2>&1 | tee -a "$LOG_FILE" >&2 || warn "bun upgrade failed"
+        else
+            info "[dry-run] Would run: bun upgrade"
+        fi
+        ok "bun done."
+    fi
+fi
+
+# =============================================================================
+# 5. UV
+# =============================================================================
+if should_run "uv"; then
+    step "uv"
+    if ! have uv; then
+        warn "uv not found — skipping."
+    else
+        log_write "## uv"
+        uv_before=$(uv --version 2>/dev/null | awk '{print $2}' || echo "?")
+        info "uv version: $uv_before"
+        run uv self update 2>&1 | tee -a "$LOG_FILE" >&2 || warn "uv self update failed"
+        ok "uv done."
+    fi
+fi
+
+# =============================================================================
+# 6. CLAUDE CODE
+# =============================================================================
+if should_run "claude"; then
+    step "Claude Code"
+    CLAUDE_BIN="$HOME/.local/bin/claude"
+    if ! have claude && [ ! -f "$CLAUDE_BIN" ]; then
+        warn "Claude Code not found — skipping."
+    else
+        log_write "## Claude Code"
+        claude_before=$(claude --version 2>/dev/null | head -1 || echo "?")
+        info "Claude Code version: $claude_before"
+        if [ "$DRY_RUN" = "0" ]; then
+            run npm update -g @anthropic-ai/claude-code 2>&1 | tee -a "$LOG_FILE" >&2 || \
+                warn "Claude Code update failed"
+        else
+            info "[dry-run] Would run: npm update -g @anthropic-ai/claude-code"
+        fi
+        ok "Claude Code done."
+    fi
+fi
+
+# =============================================================================
+# 7. OPENAI CODEX CLI
+# =============================================================================
+if should_run "codex"; then
+    step "OpenAI Codex CLI"
+    if ! npm list -g --depth=0 @openai/codex >/dev/null 2>&1; then
+        warn "@openai/codex not installed — skipping."
+    else
+        log_write "## Codex CLI"
+        codex_before=$(npm list -g --depth=0 @openai/codex 2>/dev/null | grep codex | awk -F@ '{print $NF}' || echo "?")
+        info "Codex version: $codex_before"
+        if [ "$DRY_RUN" = "0" ]; then
+            run npm update -g @openai/codex 2>&1 | tee -a "$LOG_FILE" >&2 || warn "Codex update failed"
+        else
+            info "[dry-run] Would run: npm update -g @openai/codex"
+        fi
+        ok "Codex CLI done."
+    fi
+fi
+
+# =============================================================================
+# 8. GEMINI CLI
+# =============================================================================
+if should_run "gemini"; then
+    step "Gemini CLI"
+    if ! have gemini; then
+        warn "gemini-cli not found — skipping."
+    else
+        log_write "## Gemini CLI"
+        gemini_before=$(gemini --version 2>/dev/null || echo "?")
+        info "Gemini version: $gemini_before"
+        if [ "$DRY_RUN" = "0" ]; then
+            run brew upgrade gemini-cli 2>&1 | tee -a "$LOG_FILE" >&2 || \
+                info "gemini-cli already up to date."
+        else
+            info "[dry-run] Would run: brew upgrade gemini-cli"
+        fi
+        ok "Gemini CLI done."
+    fi
+fi
+
+# =============================================================================
+# 9. OLLAMA + MODELLE
+# =============================================================================
+if should_run "ollama"; then
+    step "Ollama + Modelle"
+    if ! have ollama; then
+        warn "ollama not found — skipping."
+    else
+        log_write "## Ollama"
+        ollama_before=$(ollama --version 2>/dev/null | awk '{print $NF}' || echo "?")
+        info "Ollama version: $ollama_before"
+
+        # Update Ollama itself via brew
+        if [ "$DRY_RUN" = "0" ]; then
+            run brew upgrade ollama 2>&1 | tee -a "$LOG_FILE" >&2 || info "Ollama already up to date."
+        else
+            info "[dry-run] Would run: brew upgrade ollama"
+        fi
+
+        # Update models (only if Ollama is running)
+        if curl -sf --max-time 3 http://localhost:11434/api/tags >/dev/null 2>&1; then
+            info "Installed models:"
+            ollama list 2>/dev/null >&2 || true
+            if [ "$DRY_RUN" = "0" ]; then
+                while IFS= read -r model_line; do
+                    model_name=$(printf '%s' "$model_line" | awk '{print $1}')
+                    [ -z "$model_name" ] || [ "$model_name" = "NAME" ] && continue
+                    info "Updating model: $model_name"
+                    run ollama pull "$model_name" 2>&1 | tee -a "$LOG_FILE" >&2 || \
+                        warn "Model update failed: $model_name"
+                done < <(ollama list 2>/dev/null | tail -n +2 || true)
+            else
+                info "[dry-run] Would update all installed models via 'ollama pull'."
+            fi
+        else
+            warn "Ollama not reachable (http://localhost:11434). Run: ollama serve"
+        fi
+        ok "Ollama done."
+    fi
+fi
+
+# =============================================================================
+# 10. VS-CODE-EXTENSIONS
+# =============================================================================
+if should_run "vscode"; then
+    step "VS Code extensions"
+    CODE_BIN=""
+    if have code; then
+        CODE_BIN="code"
+    elif [ -f "/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code" ]; then
+        CODE_BIN="/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code"
+    fi
+
+    if [ -z "$CODE_BIN" ]; then
+        warn "VS Code not found — skipping."
+    else
+        log_write "## VS Code extensions"
+        if [ "$DRY_RUN" = "0" ]; then
+            run "$CODE_BIN" --update-extensions 2>&1 | tee -a "$LOG_FILE" >&2 || \
+                warn "VS Code extensions update failed"
+        else
+            info "[dry-run] Would run: code --update-extensions"
+            "$CODE_BIN" --list-extensions 2>/dev/null | head -10 >&2 || true
+            info "(and more — code --list-extensions for the full list)"
+        fi
+        ok "VS Code done."
+    fi
+fi
+
+# =============================================================================
+# 11. APP-STORE (mas)
+# =============================================================================
+if should_run "mas"; then
+    step "App Store updates (mas)"
+    if ! have mas; then
+        warn "mas not installed (brew install mas) — skipping."
+    else
+        log_write "## App Store (mas)"
+        if [ "$DRY_RUN" = "0" ]; then
+            run mas upgrade 2>&1 | tee -a "$LOG_FILE" >&2 || warn "mas upgrade had errors"
+        else
+            info "[dry-run] Available App Store updates:"
+            mas outdated 2>/dev/null >&2 || true
+        fi
+        ok "App Store done."
+    fi
+fi
+
+# =============================================================================
+# 12. XCODE CLT
+# =============================================================================
+if should_run "xcode"; then
+    step "Xcode Command Line Tools"
+    log_write "## Xcode CLT"
+    clt_version=$(pkgutil --pkg-info=com.apple.pkg.CLTools_Executables 2>/dev/null | \
+        grep version | awk '{print $2}' || echo "unknown")
+    info "Installed CLT version: $clt_version"
+    info "Note: Xcode CLT updates are done via macOS System Settings → Software Update"
+    info "  oder: softwareupdate -l | grep -i 'command line'"
+    log_write "CLT-Version: $clt_version"
+    log_write "Update manuell: softwareupdate --install --all"
+fi
+
+# =============================================================================
+# Abschluss
+# =============================================================================
+printf "\n" >&2
+step "Done"
+ok "Log: $LOG_FILE"
+notify "mac-update complete" "Log: $LOG_FILE"

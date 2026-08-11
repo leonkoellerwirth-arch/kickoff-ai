@@ -1,0 +1,165 @@
+# =============================================================================
+# ~/.gitignore_global — Global Git ignore rules
+#
+# Applies to ALL Git repos on this machine.
+# Project-specific rules → <project>/.gitignore
+# =============================================================================
+
+# =============================================================================
+# macOS
+# =============================================================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+.fseventsd
+.AppleDouble
+.LSOverride
+Icon?
+
+# =============================================================================
+# Editoren
+# =============================================================================
+
+# VS Code (lokale Einstellungen, aber NICHT .vscode/settings.json die ins Repo sollen)
+.vscode/extensions.json.local
+*.code-workspace.local
+
+# JetBrains IDEs
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+
+# Vim / Neovim
+*.swp
+*.swo
+*~
+.netrwhist
+Session.vim
+
+# Emacs
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+
+# =============================================================================
+# Betriebssystem
+# =============================================================================
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+.Trash-*
+
+# =============================================================================
+# Entwicklung (allgemein)
+# =============================================================================
+
+# Secrets / Credentials — NIE committen!
+.env
+.env.*
+!.env.example
+!.env.template
+*.pem
+*.key
+*.p12
+*.pfx
+secrets/
+credentials/
+*_secret*
+*_credentials*
+*.secret
+
+# Logs
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.orig
+*.rej
+
+# =============================================================================
+# Node / JavaScript
+# =============================================================================
+node_modules/
+.npm/
+.yarn/cache
+.pnpm-store/
+
+# =============================================================================
+# Python
+# =============================================================================
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+.eggs/
+*.whl
+.venv/
+venv/
+env/
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# =============================================================================
+# Java / JVM
+# =============================================================================
+*.class
+target/
+*.jar
+*.war
+*.nar
+*.ear
+*.zip
+*.tar.gz
+*.rar
+.classpath
+.project
+.settings/
+*.launch
+
+# =============================================================================
+# Rust
+# =============================================================================
+# (target/ bereits oben erfasst)
+
+# =============================================================================
+# Go
+# =============================================================================
+# (vendor/ — kann auch ins Repo, daher kein globales Ignore)
+
+# =============================================================================
+# Docker
+# =============================================================================
+.docker/
+docker-compose.override.yml
+
+# =============================================================================
+# kickoff-ai spezifisch
+# =============================================================================
+local/
+*.local.*

@@ -1,0 +1,176 @@
+#!/usr/bin/env bash
+# =============================================================================
+# automation/bin/dev-down — Stop a Docker Compose stack for a project
+#
+# Problem:    16 containers run permanently, including 5 MySQL instances,
+#             some for weeks (INVENTORY §5, gap analysis A.13). Wasted RAM
+#             and occupied ports without benefit.
+# Does:       Stops the Compose stack of a project (docker compose down).
+#             With --all: stops all running stacks under ~/dev/.
+#             With --idle <duration>: stops containers with ~0% CPU that have
+#             been running for at least <duration> (e.g. 4h). Used by the
+#             launchd job.
+# Changes:    Stops Docker containers; volumes are not deleted (never automatically).
+# Usage:      dev-down [<project>] [--all] [--idle <duration>] [--dry-run] [--help]
+# =============================================================================
+set -euo pipefail
+
+AUTOMATION_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$AUTOMATION_DIR/lib-automation.sh"
+
+# =============================================================================
+# Argument-Parsing
+# =============================================================================
+PROJEKT=""
+ALL_STACKS=0
+IDLE_DURATION=""
+
+for arg in "$@"; do
+    case "$arg" in
+        --dry-run)  DRY_RUN=1 ;;
+        --all)      ALL_STACKS=1 ;;
+        --idle)     IDLE_NEXT=1 ;;
+        --help|-h)
+            cat >&2 <<'EOF'
+Usage: dev-down [<project>] [--all] [--idle <duration>] [--dry-run] [--help]
+
+  Stops the Docker Compose stack of a project.
+
+Options:
+  <project>           Name of the project under ~/dev/ (e.g. myproject)
+  --all               Stop all running Compose stacks under ~/dev/
+  --idle <duration>   Stop containers with ~0% CPU that have been running for
+                      at least <duration> (e.g. --idle 4h, --idle 30m). For
+                      automatic overnight jobs.
+  --dry-run           Show what would be stopped without doing it
+  --help              This help
+
+Note: Volumes are NEVER deleted automatically. Only containers are stopped.
+
+Examples:
+  dev-down myproject            # Stop ~/dev/myproject/docker-compose.yml
+  dev-down --all                # Stop all running stacks
+  dev-down --idle 4h --dry-run  # Show idle containers (>4h, ~0% CPU)
+EOF
+            exit 0
+            ;;
+        *)
+            # Read the value following --idle
+            if [ "${IDLE_NEXT:-0}" = "1" ]; then
+                IDLE_DURATION="$arg"
+                IDLE_NEXT=0
+            elif [ "${arg#-}" = "$arg" ]; then
+                # No leading dash → project name
+                PROJEKT="$arg"
+            else
+                err "Unknown option: $arg (--help for help)"
+            fi
+            ;;
+    esac
+done
+
+require_docker
+
+# =============================================================================
+# --idle: stop idle containers
+# =============================================================================
+if [ -n "$IDLE_DURATION" ]; then
+    idle_secs=$(parse_duration "$IDLE_DURATION")
+    now_ts=$(date +%s)
+
+    step "Looking for idle containers (>$IDLE_DURATION running, ~0% CPU)"
+
+    stopped=0
+    # docker stats --no-stream outputs one line per container: NAME CPU% MEM% ...
+    while IFS= read -r line; do
+        container=$(printf '%s' "$line" | awk '{print $1}')
+        cpu=$(printf '%s' "$line" | awk '{print $2}' | tr -d '%')
+
+        # Get container start time
+        started_at=$(docker inspect --format '{{.State.StartedAt}}' "$container" 2>/dev/null || echo "")
+        if [ -z "$started_at" ]; then continue; fi
+
+        # ISO-8601 → Unix timestamp (works on macOS with date -j)
+        started_ts=$(date -j -f "%Y-%m-%dT%H:%M:%S" "${started_at%%.*}" "+%s" 2>/dev/null || echo "0")
+        running_secs=$((now_ts - started_ts))
+
+        # CPU < 2% → considered idle. awk used for decimal comparison
+        # since shell arithmetic does not handle floating point.
+        is_idle=$(printf '%s' "${cpu:-0}" | awk '{print ($1 < 2.0) ? "yes" : "no"}')
+
+        if [ "$running_secs" -ge "$idle_secs" ] && [ "$is_idle" = "yes" ]; then
+            if [ "$DRY_RUN" = "1" ]; then
+                info "[dry-run] Would stop ($(format_duration "$running_secs") running, ${cpu}% CPU): $container"
+            else
+                info "Stopping idle container: $container ($(format_duration "$running_secs") running)"
+                docker stop "$container" >/dev/null
+                ok "Stopped: $container"
+                stopped=$((stopped + 1))
+            fi
+        fi
+    done < <(docker stats --no-stream --format "{{.Name}} {{.CPUPerc}}" 2>/dev/null || true)
+
+    if [ "$DRY_RUN" = "0" ] && [ "$stopped" -eq 0 ]; then
+        info "No idle containers (>${IDLE_DURATION}, ~0% CPU) found."
+    fi
+    exit 0
+fi
+
+# =============================================================================
+# --all: stop all Compose stacks
+# =============================================================================
+if [ "$ALL_STACKS" = "1" ]; then
+    step "Stopping all Compose stacks under $DEV_DIR"
+    stopped_stacks=0
+    for d in "$DEV_DIR"/*/; do
+        [ -d "$d" ] || continue
+        compose_file=$(find_compose_file "$d" 2>/dev/null) || continue
+        name=$(basename "$d")
+
+        # Check whether stack is running (containers with this Compose project active)
+        running=$(docker compose -f "$compose_file" ps --services --status running 2>/dev/null || true)
+        if [ -z "$running" ]; then
+            continue
+        fi
+
+        if [ "$DRY_RUN" = "1" ]; then
+            info "[dry-run] Would stop: $name ($compose_file)"
+        else
+            info "Stopping stack: $name"
+            docker compose -f "$compose_file" down 2>/dev/null || warn "Error stopping $name"
+            ok "Stopped: $name"
+        fi
+        stopped_stacks=$((stopped_stacks + 1))
+    done
+
+    if [ "$stopped_stacks" -eq 0 ]; then
+        info "No running stacks found."
+    elif [ "$DRY_RUN" = "0" ]; then
+        ok "$stopped_stacks stack(s) stopped."
+    fi
+    exit 0
+fi
+
+# =============================================================================
+# Stop a single project
+# =============================================================================
+if [ -z "$PROJEKT" ]; then
+    err "Project name missing. Usage: dev-down <project> [--all] [--idle 4h] (--help for help)"
+fi
+
+PROJEKT_DIR="$DEV_DIR/$PROJEKT"
+[ -d "$PROJEKT_DIR" ] || err "Project directory not found: $PROJEKT_DIR"
+
+compose_file=$(find_compose_file "$PROJEKT_DIR") || {
+    err "No Compose file found in $PROJEKT_DIR"
+}
+
+step "Stopping stack: $PROJEKT"
+
+if [ "$DRY_RUN" = "1" ]; then
+    info "[dry-run] Would run: docker compose -f $compose_file down"
+    exit 0
+fi
+
+docker compose -f "$compose_file" down
+ok "Stack '$PROJEKT' stopped. Volumes are preserved."

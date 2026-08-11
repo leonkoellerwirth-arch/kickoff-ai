@@ -1,0 +1,32 @@
+# =============================================================================
+# .github/sanitize-denylist.txt — Denylist for the sanitization scan
+#
+# Purpose:  Patterns checked for personal data in the validate.yml workflow.
+#           This file contains ONLY generic patterns (regex) — no plaintext names.
+#
+# To extend with your own terms (without modifying this file):
+#   Create local/sanitize-denylist-private.txt (gitignored).
+#   The workflow also reads that file when it exists.
+#   Format: one regex per line, comments with #, blank lines ignored.
+#   Example:
+#     MyClientName
+#     my-project-name
+# =============================================================================
+
+# Usernames in paths (primarily macOS /Users/<name>)
+# Allowed: /Users/Shared, no match on /Users/$USER or /Users/<var>
+/Users/[a-zA-Z][a-zA-Z0-9_-]{1,}
+
+# GitHub token prefixes
+gho_[A-Za-z0-9]{36,}
+ghp_[A-Za-z0-9]{36,}
+github_pat_[A-Za-z0-9_]{80,}
+
+# Private SSH key headers
+-----BEGIN (RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----
+
+# AWS key patterns
+AKIA[0-9A-Z]{16}
+
+# Generic API key pattern (high false-positive rate — informational only)
+# api[_-]?key\s*[:=]\s*["'][A-Za-z0-9_-]{20,}["']

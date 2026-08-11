@@ -1,0 +1,51 @@
+# automation/manifests/mas-apps.txt
+# Declarative list of App Store apps for `mas install` / `mas upgrade`.
+# Managed via: mac-update --only mas (updates), mas install <id> (first install).
+#
+# Format: <mas-id> <app-name>
+#         start comments with #.
+#         Find IDs: mas search "<App-Name>"  or  mas list
+#
+# Usage:
+#   mas list                        # Shows all installed apps with IDs
+#   mas search "App Name"           # Search for ID
+#   mas install <id>                # Install
+#   mac-update --only mas           # Update all apps
+#
+# Prerequisite: brew install mas (included in Brewfile.automation)
+#
+# NOTE: Many installed apps (from INVENTORY §10) were not obtained via the
+# App Store (Adobe CC, JetBrains, Docker, etc.) and do not appear here.
+# Only apps verifiably installed via the App Store are listed.
+#
+# IDs are stable, but verify with `mas list` on the machine — the IDs
+# listed below are best-effort from public sources. Use `mas list`
+# to see the IDs of all apps actually installed via the App Store.
+
+# --- Developer tools ---
+497799835  Xcode
+# Note: Xcode updates preferred via Softwareupdate, not mas (more stable)
+
+# --- Productivity ---
+# Goodnotes — digital notebook (per INVENTORY §10)
+# Find ID: mas search "Goodnotes"
+# 1444383602  Goodnotes 5    # Placeholder — verify with `mas list`
+
+# --- Media / Education ---
+# Anki — flashcard system
+# 1469915091  Anki            # Placeholder — verify with `mas list`
+
+# --- Communication ---
+# TestFlight — beta testing (per INVENTORY §10)
+899247664  TestFlight
+
+# --- Utilities ---
+# The Unarchiver (per INVENTORY §10)
+425424353  The Unarchiver
+
+# ============================================================
+# Instructions: find IDs for all installed apps
+# ============================================================
+# mas list | sort -k2
+# Output: <id>  <App-Name>  (<version>)
+# Then populate this file with the real IDs and commit.

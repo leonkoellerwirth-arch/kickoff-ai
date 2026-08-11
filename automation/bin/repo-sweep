@@ -1,0 +1,225 @@
+#!/usr/bin/env bash
+# =============================================================================
+# automation/bin/repo-sweep — Overview of all repos under ~/dev
+#
+# Problem:    58 repos under ~/dev/ without lifecycle management (INVENTORY §13,
+#             gap analysis B.10). No quick overview of drift, stale branches,
+#             missing standard files, .env files.
+# Does:       Checks per repo (supplementing `base status`):
+#             - Branch ≠ main/master
+#             - Branches without remote tracking
+#             - Last commit older than N days
+#             - Missing standard files (README/CHANGELOG/HANDOFF — BIBLE/agent via base status)
+#             - .env files in the working directory
+#             - Repo size
+#             Sortable by dirty|age|size. Markdown output to local/repo-sweep.md.
+# Changes:    Nothing — read-only.
+# Requires:   ~/dev/base present for base status (shown first).
+# Usage:      repo-sweep [--sort dirty|age|size] [--markdown] [--age-days N] [--help]
+# =============================================================================
+set -euo pipefail
+
+AUTOMATION_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$AUTOMATION_DIR/lib-automation.sh"
+
+# =============================================================================
+# Argument-Parsing
+# =============================================================================
+SORT_BY="dirty"
+MARKDOWN=0
+AGE_DAYS=30
+
+for arg in "$@"; do
+    case "$arg" in
+        --markdown) MARKDOWN=1 ;;
+        --sort)     SORT_NEXT=1 ;;
+        --age-days) AGE_NEXT=1 ;;
+        --help|-h)
+            cat >&2 <<'EOF'
+Usage: repo-sweep [--sort dirty|age|size] [--markdown] [--age-days N] [--help]
+
+  Overview of all Git repos under ~/dev. Supplements `base status` (git compliance,
+  gate/CI/BIBLE/agent) with: branch drift, missing files, .env, repo size.
+
+Options:
+  --sort dirty|age|size   Sort order (default: dirty)
+  --markdown              Write report to local/repo-sweep.md
+  --age-days N            Threshold for "stale" in days (default: 30)
+  --help                  This help
+
+Note: Run `base status` first for gate/CI/BIBLE/agent status.
+      repo-sweep only covers gaps that base status does not check.
+
+Examples:
+  repo-sweep
+  repo-sweep --sort age
+  repo-sweep --sort size --markdown
+EOF
+            exit 0
+            ;;
+        *)
+            if [ "${SORT_NEXT:-0}" = "1" ]; then
+                SORT_BY="$arg"
+                SORT_NEXT=0
+            elif [ "${AGE_NEXT:-0}" = "1" ]; then
+                AGE_DAYS="$arg"
+                AGE_NEXT=0
+            fi
+            ;;
+    esac
+done
+
+# =============================================================================
+# Note about base status
+# =============================================================================
+step "repo-sweep — repo overview under $DEV_DIR"
+info "Tip: run 'base status' first for gate/CI/BIBLE/agent status (base status covers that)."
+printf "\n" >&2
+
+# =============================================================================
+# Collect data
+# =============================================================================
+# Collect lines into temp files for sorting (bash 3.2: no mapfile)
+TMPFILE=$(mktemp /tmp/repo-sweep.XXXXXX)
+trap 'rm -f "$TMPFILE"' EXIT
+
+now_ts=$(date +%s)
+
+for d in "$DEV_DIR"/*/; do
+    [ -d "$d" ] || continue
+    [ -d "$d/.git" ] || continue
+    name=$(basename "$d")
+    [ "$name" = "base" ] && continue   # base is covered by base status
+
+    # --- Branch ---
+    branch=$(git -C "$d" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "?")
+    if [ "$branch" = "main" ] || [ "$branch" = "master" ]; then
+        branch_flag="ok"
+    else
+        branch_flag="BRANCH:$branch"
+    fi
+
+    # --- Uncommitted / Staged (covered by base status, supplementary here) ---
+    dirty=$(git -C "$d" status --porcelain 2>/dev/null | wc -l | tr -d ' ')
+    dirty_flag="clean"
+    [ "$dirty" -gt 0 ] && dirty_flag="DIRTY(${dirty})"
+
+    # --- Unpushed commits ---
+    ahead=$(git -C "$d" rev-list --count '@{u}..HEAD' 2>/dev/null || echo "-")
+    push_flag="ok"
+    [ "$ahead" != "0" ] && [ "$ahead" != "-" ] && push_flag="PUSH+${ahead}"
+
+    # --- Branches without remote tracking ---
+    local_only_branches=$(git -C "$d" branch -vv 2>/dev/null | \
+        grep -v '\[origin/' | grep -v '\[upstream/' | \
+        awk '{print $1}' | grep -v '^\*' | tr '\n' ',' | sed 's/,$//' || true)
+    orphan_flag=""
+    [ -n "$local_only_branches" ] && orphan_flag="ORPHAN:$local_only_branches"
+
+    # --- Age of last commit ---
+    last_ts=$(git -C "$d" log -1 --format="%ct" 2>/dev/null || echo "0")
+    if [ "$last_ts" = "0" ]; then
+        age_days=9999
+        age_str="no commits"
+    else
+        age_days=$(( (now_ts - last_ts) / 86400 ))
+        age_str="${age_days}d"
+    fi
+    age_flag="ok"
+    [ "$age_days" -gt "$AGE_DAYS" ] && age_flag="STALE:${age_str}"
+
+    # --- Missing standard files ---
+    missing=""
+    [ -f "$d/README.md" ] || [ -f "$d/README" ] || missing="${missing}README "
+    [ -f "$d/CHANGELOG.md" ] || missing="${missing}CHANGELOG "
+    [ -f "$d/HANDOFF.md" ] || missing="${missing}HANDOFF "
+    missing=$(printf '%s' "$missing" | sed 's/ $//' | tr ' ' ',')
+    files_flag="ok"
+    [ -n "$missing" ] && files_flag="MISSING:$missing"
+
+    # --- .env files ---
+    env_files=$(find "$d" -maxdepth 2 -name ".env*" -not -name ".env.example" \
+        -not -name ".env.template" -not -path "*/.git/*" 2>/dev/null | \
+        wc -l | tr -d ' ')
+    env_flag="ok"
+    [ "$env_files" -gt 0 ] && env_flag="ENV:${env_files}"
+
+    # --- Repo size ---
+    size_mb=$(du -sm "$d" 2>/dev/null | awk '{print $1}' || echo "0")
+
+    # Write line to file: sortable fields first, then display columns
+    # Format: AGE_DAYS|SIZE_MB|DIRTY_COUNT|NAME|BRANCH|DIRTY|PUSH|ORPHAN|AGE|FILES|ENV|SIZE
+    printf '%05d|%06d|%04d|%s|%s|%s|%s|%s|%s|%s|%s|%s\n' \
+        "$age_days" "$size_mb" "$dirty" \
+        "$name" "$branch_flag" "$dirty_flag" "$push_flag" \
+        "${orphan_flag:-ok}" "$age_flag" "$files_flag" "$env_flag" "${size_mb}MB" \
+        >> "$TMPFILE"
+done
+
+# =============================================================================
+# Sort
+# =============================================================================
+case "$SORT_BY" in
+    age)   sort_cmd="sort -t'|' -k1 -rn" ;;  # Oldest first
+    size)  sort_cmd="sort -t'|' -k2 -rn" ;;  # Largest first
+    dirty) sort_cmd="sort -t'|' -k3 -rn" ;;  # Most changes first
+    *)     sort_cmd="sort -t'|' -k3 -rn" ;;
+esac
+
+sorted=$(eval "$sort_cmd" < "$TMPFILE" || cat "$TMPFILE")
+
+# =============================================================================
+# Output
+# =============================================================================
+# Header row
+HEADER=$(printf "%-28s %-8s %-10s %-8s %-10s %-16s %-8s %-8s" \
+    "REPO" "BRANCH" "DIRTY" "PUSH" "ORPHAN" "MISSING" "ENV" "SIZE")
+printf "\n%s\n" "$HEADER" >&2
+printf "%s\n" "$(printf '%0.s-' {1..100})" >&2
+
+DIRTY_COUNT=0
+OLD_COUNT=0
+ENV_COUNT=0
+TOTAL=0
+
+# _age_d _size_m _dirty_c: sort columns — read for ordering, values not used further
+while IFS='|' read -r _age_d _size_m _dirty_c name branch dirty push orphan age files env sz; do
+    TOTAL=$((TOTAL + 1))
+
+    # Warning flags for problematic repos
+    flag=""
+    [ "$dirty" != "clean" ] && { flag="${flag}!"; DIRTY_COUNT=$((DIRTY_COUNT + 1)); }
+    [ "$age" != "ok" ] && { flag="${flag}A"; OLD_COUNT=$((OLD_COUNT + 1)); }
+    [ "$env" != "ok" ] && { flag="${flag}E"; ENV_COUNT=$((ENV_COUNT + 1)); }
+
+    printf "%-28s %-8s %-10s %-8s %-10s %-16s %-8s %-8s %s\n" \
+        "${name:0:28}" "${branch:0:8}" "${dirty:0:10}" "${push:0:8}" \
+        "${orphan:0:10}" "${files:0:16}" "${env:0:8}" "${sz:0:8}" "$flag" >&2
+done < <(printf '%s\n' "$sorted")
+
+printf "\n" >&2
+info "$TOTAL repos · $DIRTY_COUNT with changes · $OLD_COUNT stale (>$AGE_DAYS days) · $ENV_COUNT with .env"
+info "Legend: !=DIRTY  A=Stale  E=.env file present"
+info "Run base status for: gate/CI/BIBLE/agent status"
+
+# =============================================================================
+# Markdown report
+# =============================================================================
+if [ "$MARKDOWN" = "1" ]; then
+    ensure_local_dir
+    MD_FILE="$LOCAL_DIR/repo-sweep.md"
+    {
+        printf "# Repo Sweep — %s\n\n" "$(date '+%Y-%m-%d %H:%M:%S')"
+        printf "**Repos:** %d · **Dirty:** %d · **Stale (>%dd):** %d · **.env:** %d\n\n" \
+            "$TOTAL" "$DIRTY_COUNT" "$AGE_DAYS" "$OLD_COUNT" "$ENV_COUNT"
+        printf "| Repo | Branch | Dirty | Push | Orphan | Missing | .env | Size |\n"
+        printf "|------|--------|-------|------|--------|---------|------|------|\n"
+        # _age_d _size_m _dirty_c: sort columns — read for ordering only
+        while IFS='|' read -r _age_d _size_m _dirty_c name branch dirty push orphan age files env sz; do
+            printf "| %s | %s | %s | %s | %s | %s | %s | %s |\n" \
+                "$name" "$branch" "$dirty" "$push" "$orphan" "$files" "$env" "$sz"
+        done < <(printf '%s\n' "$sorted")
+        printf "\n*Generated by repo-sweep. Run base status for gate/CI/BIBLE/agent.*\n"
+    } > "$MD_FILE"
+    ok "Markdown report: $MD_FILE"
+fi

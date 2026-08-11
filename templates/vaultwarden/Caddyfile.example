@@ -1,0 +1,40 @@
+# =============================================================================
+# templates/vaultwarden/Caddyfile.example — Caddy reverse proxy for Vaultwarden
+#
+# Prerequisites:
+#   - Caddy installed: brew install caddy
+#   - Domain points to this server (A/AAAA DNS record)
+#   - Ports 80 and 443 reachable
+#
+# Start:
+#   sudo caddy run --config Caddyfile
+#
+# Let's Encrypt certificate is obtained and renewed automatically.
+# For local-only use, http://localhost:8080 without Caddy is sufficient.
+# =============================================================================
+
+# Replace vault.example.tld with your own domain:
+vault.example.tld {
+
+    # Forward requests to Vaultwarden (Docker port 8080)
+    reverse_proxy localhost:8080
+
+    # Compression
+    encode gzip
+
+    # Security headers
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "SAMEORIGIN"
+        X-XSS-Protection "1; mode=block"
+        Referrer-Policy "same-origin"
+        -Server
+    }
+
+    # Access logs (optional, omit if logging is not desired)
+    log {
+        output file /var/log/caddy/vaultwarden.log
+        format json
+    }
+}

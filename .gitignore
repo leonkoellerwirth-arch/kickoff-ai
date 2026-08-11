@@ -1,0 +1,43 @@
+# =============================================================================
+# .gitignore — kickoff-ai repository
+#
+# Machine-specific data, generated reports and credentials
+# do not belong in the repo.
+# =============================================================================
+
+# Machine-specific data and reports
+# local/.gitkeep and local/README.md stay versioned (the explanation file)
+local/*
+!local/.gitkeep
+!local/README.md
+
+# Local overrides (never commit personal data)
+*.local
+*.local.*
+.env
+.env.*
+!.env.example
+!.env.template
+
+# Backup artifacts (from backup_file())
+# (they live in ~/.setup-backups, not in the repo)
+
+# macOS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Icon?
+
+# Editor temp files
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+
+# Brew bundle lock (no lock file wanted for a portable setup)
+Brewfile.lock.json
+Brewfile.optional.lock.json

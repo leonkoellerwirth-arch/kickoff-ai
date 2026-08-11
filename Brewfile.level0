@@ -1,0 +1,24 @@
+# =============================================================================
+# Brewfile.level0 — Emergency core formulae (level 0, ~5 minutes)
+#
+# Only the absolute minimum needed within 15 minutes.
+# Full stack → Brewfile (installed at level 1)
+# =============================================================================
+
+# Version control (brew git must take precedence over /usr/bin/git)
+brew "git"
+brew "gh"                   # GitHub CLI
+brew "git-lfs"              # Git LFS
+
+# Shell tools
+brew "ripgrep"              # fast grep
+brew "jq"                   # JSON
+
+# Security
+brew "gitleaks"             # Secret scanning
+
+# Python base (for uv/pipx)
+brew "uv"
+
+# Node base (pnpm, deno — nvm is installed directly)
+brew "pnpm"

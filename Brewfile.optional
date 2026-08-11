@@ -1,0 +1,60 @@
+# =============================================================================
+# Brewfile.optional — Optional packages
+#
+# Install via: brew bundle --file=Brewfile.optional
+# Or during bootstrap: ./bootstrap.sh --full
+#
+# Includes: security/pentest tools, ML libraries, media tools,
+#           network utilities, other specialized tools.
+# ALL packages verified in the inventory from 2026-08-10.
+# =============================================================================
+
+# =============================================================================
+# Security / Pentest (only useful on pentest/research machines)
+# =============================================================================
+brew "nmap"                 # Network scanner
+brew "nikto"                # Web server scanner
+brew "sqlmap"               # SQL injection tool
+brew "aircrack-ng"          # WLAN security analysis
+brew "dnsmap"               # DNS enumeration
+
+# =============================================================================
+# Media / image tools
+# =============================================================================
+cask "upscayl"              # AI image upscaling (Cask)
+cask "calibre"              # E-book manager (Cask)
+brew "yt-dlp"               # YouTube/video downloader
+brew "advancecomp"          # Optimize PNG/ZIP compression
+brew "vips"                 # High-performance image processing
+
+# =============================================================================
+# ML / AI libraries (native arm64)
+# =============================================================================
+brew "mlx"                  # Apple MLX Framework
+brew "openai-whisper"       # Speech-to-Text (OpenAI)
+
+# =============================================================================
+# Network / download
+# =============================================================================
+brew "aria2"                # Fast multi-connection downloader
+brew "lftp"                 # FTP/SFTP client with scripting
+brew "wget"                 # HTTP/FTP downloader (already in core)
+
+# =============================================================================
+# Other tools
+# =============================================================================
+brew "himalaya"             # Email CLI
+brew "protobuf"             # Protocol Buffers (latest version)
+
+# =============================================================================
+# goplaces (via former openclaw/tap)
+#
+# NOTE: This tool originally came in via openclaw/tap.
+# Since OpenClaw is being uninstalled, the tap would need to be added manually
+# if goplaces is still needed:
+#   brew tap openclaw/tap && brew install goplaces
+# Commented out here — enable if needed:
+#
+# tap "openclaw/tap"
+# brew "openclaw/tap/goplaces"
+# =============================================================================

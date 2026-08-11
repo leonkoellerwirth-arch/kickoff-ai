@@ -1,0 +1,27 @@
+# Allowlist for the sanitization scan
+#
+# Lines matching any of these patterns are NOT treated as findings —
+# even if they contain a pattern from a denylist.
+#
+# Format: one extended regex (ERE) per line, applied to the full match line
+# (including file path and line number).
+#
+# Keep this list lean. Every entry here is a hole in the protection and
+# needs a justification in the comment above it.
+
+# The repo's own clone URL. It necessarily contains the GitHub account name
+# and must appear in the repo, otherwise the one-liner on a fresh machine
+# won't work (prepare.sh, README, docs/09-UMZUG.md).
+github\.com[:/]leonkoellerwirth-arch/kickoff-ai
+raw\.githubusercontent\.com/leonkoellerwirth-arch/kickoff-ai
+
+# Placeholder addresses in examples and templates.
+# example.com/.org/.net are reserved for documentation per RFC 2606 and
+# can never be a real address — allowed unconditionally.
+@example\.(com|org|net)
+(your|you|deine|dein|du|user|name|beispiel|example)@
+noreply@|users\.noreply\.github\.com
+
+# The deny- and allowlists themselves naturally contain patterns.
+sanitize-(denylist|allowlist)
+docs/(de/)?05-SANITI(SIERUNG|ZATION)\.md

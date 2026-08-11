@@ -1,0 +1,633 @@
+#!/usr/bin/env bash
+# =============================================================================
+# automation/bin/env-run — Run commands with Vaultwarden/Bitwarden-secured env variables
+#
+# Problem:    .env files sit as plaintext files on disk (INVENTORY §9,
+#             gap analysis B.1). At least one .env found outside of a repository.
+# Does:       Reads a .env.template with bw:// references, resolves them via
+#             the Bitwarden CLI (bw), and runs the command with the secrets ONLY
+#             in the process environment — never as ps-visible arguments, never
+#             as a file.
+#
+# Why there is no `bw run`:
+#   The Bitwarden CLI (bw) has no `run` subcommand. `bws run` exists but belongs
+#   to Bitwarden Secrets Manager (proprietary) and is not implemented by Vaultwarden.
+#   This script therefore builds secret injection itself: secrets are resolved via
+#   `bw get` and passed via shell export into a subshell, which then replaces itself
+#   with the target command via `exec`. Values are thus exclusively visible in the
+#   process environment, not in `ps` arguments.
+#
+# Changes:    With 'migrate': writes .env.template next to the .env (the .env is kept).
+#             Runs the target command with resolved secrets.
+# Usage:      env-run [--env-file <file>] [--serve] [--dry-run] [--] <command> [args...]
+#             env-run migrate <.env-file>
+#             env-run check <.env.template>
+# =============================================================================
+set -euo pipefail
+
+AUTOMATION_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$AUTOMATION_DIR/lib-automation.sh"
+
+# =============================================================================
+# Konfiguration
+# =============================================================================
+BW_SERVE_PORT="${BW_SERVE_PORT:-8087}"
+ENV_TEMPLATE_DEFAULT=".env.template"
+
+# =============================================================================
+# Helper functions: bw dependencies
+# =============================================================================
+
+require_bw() {
+    if ! have bw; then
+        err "Bitwarden CLI (bw) not found. Install: brew install bitwarden-cli"
+    fi
+    if ! have jq; then
+        err "jq not found (required for field resolution). Install: brew install jq"
+    fi
+}
+
+check_bw_session() {
+    if [ -z "${BW_SESSION:-}" ]; then
+        printf "%s✗  BW_SESSION not set.\n\n" "$_RED" >&2
+        printf "   Unlock vault and export session:\n" >&2
+        printf "     export BW_SESSION=\$(bw unlock --raw)\n\n" >&2
+        printf "   First time: log in first:\n" >&2
+        printf "     bw config server http://localhost:8080   # Vaultwarden URL\n" >&2
+        printf "     bw login\n" >&2
+        printf "     export BW_SESSION=\$(bw unlock --raw)\n%s\n" "$_RESET" >&2
+        exit 1
+    fi
+
+    local status
+    status=$(bw status --session "$BW_SESSION" 2>/dev/null | jq -r '.status // empty' 2>/dev/null || true)
+    case "${status:-}" in
+        unlocked)
+            return 0
+            ;;
+        locked)
+            printf "%s✗  Vault locked. Unlock:\n" "$_RED" >&2
+            printf "     export BW_SESSION=\$(bw unlock --raw)\n%s\n" "$_RESET" >&2
+            exit 1
+            ;;
+        *)
+            printf "%s✗  Not logged in or session expired.\n" "$_RED" >&2
+            printf "   Log in and unlock:\n" >&2
+            printf "     bw login\n" >&2
+            printf "     export BW_SESSION=\$(bw unlock --raw)\n%s\n" "$_RESET" >&2
+            exit 1
+            ;;
+    esac
+}
+
+# =============================================================================
+# Helper function: field resolution via bw get (standard fast path)
+# Outputs the value on stdout; returns 1 if not found.
+# =============================================================================
+bw_get_field() {
+    local item="$1"
+    local field="$2"
+    local value=""
+
+    case "$field" in
+        password|username|notes|totp)
+            value=$(bw get "$field" "$item" --session "$BW_SESSION" 2>/dev/null) || true
+            ;;
+        *)
+            # Custom field — fetch item, filter with jq
+            local item_json
+            item_json=$(bw get item "$item" --session "$BW_SESSION" 2>/dev/null) || true
+            if [ -n "$item_json" ]; then
+                value=$(printf '%s' "$item_json" | \
+                    jq -r --arg f "$field" \
+                       '.fields // [] | .[] | select(.name == $f) | .value // empty' \
+                       2>/dev/null) || true
+            fi
+            ;;
+    esac
+
+    if [ -z "$value" ]; then
+        return 1
+    fi
+    printf '%s' "$value"
+}
+
+# =============================================================================
+# Optional fast path: bw serve (local REST API)
+#
+# Advantage:  With many variables the vault is decrypted only once instead of
+#             once per bw call. On large vaults this can be significantly faster
+#             (3–10×).
+# Drawback:   Starts an additional local HTTP service on 127.0.0.1. It is
+#             stopped at the end of the call. Requires curl.
+#             Enable: --serve or BW_SERVE=1 (environment variable).
+# =============================================================================
+BW_SERVE_PID=""
+
+_start_bw_serve() {
+    if ! have curl; then
+        warn "curl not found — --serve not available, using bw get directly."
+        return 1
+    fi
+    bw serve --hostname 127.0.0.1 --port "$BW_SERVE_PORT" \
+        --session "$BW_SESSION" >/dev/null 2>&1 &
+    BW_SERVE_PID=$!
+    # Wait briefly until the service is up
+    local i=0
+    while [ $i -lt 10 ]; do
+        if curl -sf "http://127.0.0.1:${BW_SERVE_PORT}/status" >/dev/null 2>&1; then
+            info "bw serve running on port $BW_SERVE_PORT (PID $BW_SERVE_PID)"
+            return 0
+        fi
+        sleep 0.3
+        i=$((i + 1))
+    done
+    warn "bw serve not reachable — falling back to bw get."
+    kill "$BW_SERVE_PID" 2>/dev/null || true
+    BW_SERVE_PID=""
+    return 1
+}
+
+_stop_bw_serve() {
+    if [ -n "$BW_SERVE_PID" ]; then
+        kill "$BW_SERVE_PID" 2>/dev/null || true
+        BW_SERVE_PID=""
+    fi
+}
+
+# Field resolution via bw serve REST API
+_serve_get_field() {
+    local item="$1"
+    local field="$2"
+
+    # URL-encode the item name via Python (always available on macOS)
+    local encoded_item
+    encoded_item=$(python3 -c "import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1]))" "$item" 2>/dev/null) || encoded_item="$item"
+
+    # Search items
+    local response
+    response=$(curl -sf "http://127.0.0.1:${BW_SERVE_PORT}/list/object/items?search=${encoded_item}" 2>/dev/null) || true
+    if [ -z "$response" ]; then
+        return 1
+    fi
+
+    # Get item ID — prefer exact name match
+    local item_id
+    item_id=$(printf '%s' "$response" | \
+        jq -r --arg name "$item" \
+           '.data.data // [] | map(select(.name == $name)) | .[0].id // empty' \
+           2>/dev/null) || true
+
+    if [ -z "$item_id" ]; then
+        # No exact match — take first result
+        item_id=$(printf '%s' "$response" | \
+            jq -r '.data.data // [] | .[0].id // empty' 2>/dev/null) || true
+    fi
+
+    if [ -z "$item_id" ]; then
+        return 1
+    fi
+
+    # Fetch field from item
+    local item_json
+    item_json=$(curl -sf "http://127.0.0.1:${BW_SERVE_PORT}/object/item/${item_id}" 2>/dev/null | \
+        jq '.data // empty' 2>/dev/null) || true
+
+    if [ -z "$item_json" ]; then
+        return 1
+    fi
+
+    local value=""
+    case "$field" in
+        password)
+            value=$(printf '%s' "$item_json" | jq -r '.login.password // empty' 2>/dev/null) || true
+            ;;
+        username)
+            value=$(printf '%s' "$item_json" | jq -r '.login.username // empty' 2>/dev/null) || true
+            ;;
+        notes)
+            value=$(printf '%s' "$item_json" | jq -r '.notes // empty' 2>/dev/null) || true
+            ;;
+        totp)
+            value=$(printf '%s' "$item_json" | jq -r '.login.totp // empty' 2>/dev/null) || true
+            ;;
+        *)
+            value=$(printf '%s' "$item_json" | \
+                jq -r --arg f "$field" \
+                   '.fields // [] | .[] | select(.name == $f) | .value // empty' \
+                   2>/dev/null) || true
+            ;;
+    esac
+
+    if [ -z "$value" ]; then
+        return 1
+    fi
+    printf '%s' "$value"
+}
+
+# Unified access point — decides between serve and direct bw get
+USE_SERVE=0
+
+resolve_reference() {
+    local item="$1"
+    local field="$2"
+    local value=""
+
+    if [ "$USE_SERVE" = "1" ] && [ -n "$BW_SERVE_PID" ]; then
+        value=$(_serve_get_field "$item" "$field") || true
+    fi
+
+    # Fall back to direct bw get
+    if [ -z "$value" ]; then
+        value=$(bw_get_field "$item" "$field") || true
+    fi
+
+    if [ -z "$value" ]; then
+        err "Secret not found: bw://${item}/${field}\n  Check: env-run check <template>"
+    fi
+    printf '%s' "$value"
+}
+
+# =============================================================================
+# Hilfe-Text
+# =============================================================================
+show_help() {
+    cat >&2 <<'EOF'
+Usage:
+  env-run [--env-file <file>] [--serve] [--dry-run] [--] <command> [args...]
+  env-run migrate <.env-file>
+  env-run check   <.env.template>
+  env-run --help
+
+Runs <command>, resolving bw:// references from the template file and injecting
+them as environment variables. Secrets exist only in the process environment of
+the started command — never as ps-visible arguments, never as a file on disk.
+
+Subcommands:
+  migrate <.env>          Creates .env.template from an existing .env.
+                          Values are printed to stderr so you can enter them
+                          manually in Vaultwarden. Writes NOTHING to the vault.
+  check <.env.template>   Checks whether all bw:// references are resolvable.
+                          Does not output any values.
+
+Options:
+  --env-file <file>    Template file (default: .env.template)
+  --serve              Optional fast path: starts bw serve on 127.0.0.1 for
+                       one run. Faster with many variables (decrypt vault only
+                       once), but starts a local HTTP service. Set BW_SERVE=1
+                       as alternative.
+  --dry-run            Shows which variables would be set (without values).
+                       Does NOT run the command.
+  --help               This help
+
+Template format (.env.template):
+  # Comments are allowed
+  OPENAI_API_KEY=bw://openai-api/password
+  DATABASE_URL=bw://my-service/url              # custom field "url"
+  DB_USER=bw://my-service/username
+  LOG_LEVEL=info                                # literal value — passed through as-is
+
+  Fields: password, username, notes, totp, or any custom field name.
+  Reference format: bw://<item-name>/<field-name>
+
+Session:
+  Unlock vault before calling:
+    export BW_SESSION=$(bw unlock --raw)
+  Do not set BW_SESSION permanently in .zshrc — only for the current session.
+
+Examples:
+  env-run -- uvicorn app.main:app --port 8000
+  env-run --env-file config/.env.prod.template -- ./scripts/deploy.sh
+  env-run --serve -- python scripts/seed.py     # faster with many secrets
+  env-run --dry-run -- env | grep -v '^_'       # shows what would be set
+  env-run migrate .env                          # creates .env.template
+  env-run check .env.template                   # checks all references
+EOF
+}
+
+# =============================================================================
+# Argument-Parsing
+# =============================================================================
+ENV_FILE="$ENV_TEMPLATE_DEFAULT"
+DRY_RUN_MODE=0
+CMD_ARRAY=()
+SUBCOMMAND=""
+SUBCOMMAND_ARG=""
+
+if [ $# -eq 0 ]; then
+    show_help
+    exit 0
+fi
+
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --help|-h)
+            show_help
+            exit 0
+            ;;
+        migrate|check)
+            SUBCOMMAND="$1"
+            shift
+            SUBCOMMAND_ARG="${1:-}"
+            break
+            ;;
+        --env-file)
+            if [ -z "${2:-}" ]; then
+                err "--env-file requires a filename."
+            fi
+            ENV_FILE="$2"
+            shift 2
+            ;;
+        --serve)
+            USE_SERVE=1
+            shift
+            ;;
+        --dry-run)
+            DRY_RUN_MODE=1
+            shift
+            ;;
+        --)
+            shift
+            CMD_ARRAY=("$@")
+            break
+            ;;
+        -*)
+            err "Unknown option: $1  (--help for help)"
+            ;;
+        *)
+            CMD_ARRAY=("$@")
+            break
+            ;;
+    esac
+done
+
+# =============================================================================
+# Subkommando: migrate
+# =============================================================================
+if [ "$SUBCOMMAND" = "migrate" ]; then
+    ENV_INPUT="${SUBCOMMAND_ARG:-}"
+    if [ -z "$ENV_INPUT" ] || [ ! -f "$ENV_INPUT" ]; then
+        err "Env file not found: '${ENV_INPUT:-}'. Usage: env-run migrate <.env>"
+    fi
+
+    TEMPLATE_OUT="${ENV_INPUT}.template"
+    if [ -f "$TEMPLATE_OUT" ]; then
+        warn "Template already exists: $TEMPLATE_OUT"
+        if ! confirm "Overwrite?"; then
+            info "Aborted."
+            exit 0
+        fi
+    fi
+
+    step "Migration: $ENV_INPUT → $TEMPLATE_OUT"
+    warn "IMPORTANT: This operation writes NOTHING to Vaultwarden."
+    warn "Enter the values manually in the Vaultwarden interface."
+    printf "\n" >&2
+
+    {
+        printf "# .env.template — generated by env-run migrate on %s\n" "$(date '+%Y-%m-%d')"
+        printf "# Reference format: bw://<item-name>/<field>  (Fields: password, username, notes or custom)\n"
+        printf "# Run: env-run --env-file %s -- <command>\n\n" "$TEMPLATE_OUT"
+
+        while IFS= read -r line || [ -n "$line" ]; do
+            # Pass comments and blank lines through
+            case "$line" in
+                ''|'#'*)
+                    printf '%s\n' "$line"
+                    continue
+                    ;;
+            esac
+
+            # Split KEY=VALUE
+            key="${line%%=*}"
+            value="${line#*=}"
+
+            # Skip invalid keys
+            case "$key" in
+                ''|*[!A-Za-z0-9_]*)
+                    printf '%s\n' "$line"
+                    continue
+                    ;;
+            esac
+
+            # Pass empty-valued lines through
+            if [ -z "$value" ]; then
+                printf '%s\n' "$line"
+                continue
+            fi
+
+            # Already a reference?
+            case "$value" in
+                bw://*)
+                    printf '%s=%s\n' "$key" "$value"
+                    ;;
+                *)
+                    # Plaintext value → generate bw:// reference suggestion
+                    item_name=$(printf '%s' "$key" | tr '[:upper:]_' '[:lower:]-')
+                    printf '%s=bw://%s/password\n' "$key" "$item_name"
+                    ;;
+            esac
+        done < "$ENV_INPUT"
+    } > "$TEMPLATE_OUT"
+
+    ok "Template created: $TEMPLATE_OUT"
+    printf "\n" >&2
+
+    # Print values so the user can enter them in Vaultwarden
+    info "Values for manual entry in Vaultwarden:"
+    printf "\n" >&2
+    while IFS= read -r line || [ -n "$line" ]; do
+        case "$line" in
+            ''|'#'*) continue ;;
+        esac
+        key="${line%%=*}"
+        value="${line#*=}"
+        case "$key" in
+            ''|*[!A-Za-z0-9_]*) continue ;;
+        esac
+        case "$value" in
+            ''|bw://*) continue ;;
+        esac
+        item_name=$(printf '%s' "$key" | tr '[:upper:]_' '[:lower:]-')
+        printf "  %-30s → Item: %-20s  Value: %s\n" "$key" "$item_name" "$value" >&2
+    done < "$ENV_INPUT"
+
+    printf "\n" >&2
+    info "Next steps:"
+    info "  1. Open Vaultwarden and create an entry for each value."
+    info "     (Web UI or: bw create item '{\"type\":1,\"name\":\"item-name\",...}')"
+    info "  2. Adjust the bw:// references in $TEMPLATE_OUT if needed."
+    info "  3. Check: env-run check $TEMPLATE_OUT"
+    info "  4. Run: env-run --env-file $TEMPLATE_OUT -- <command>"
+    info "  5. Delete the original $ENV_INPUT (do not just remove it from git!)."
+    info "     WARNING: Secrets already committed are considered compromised — rotate them!"
+    exit 0
+fi
+
+# =============================================================================
+# Subkommando: check
+# =============================================================================
+if [ "$SUBCOMMAND" = "check" ]; then
+    TEMPLATE_CHECK="${SUBCOMMAND_ARG:-}"
+    if [ -z "$TEMPLATE_CHECK" ] || [ ! -f "$TEMPLATE_CHECK" ]; then
+        err "Template not found: '${TEMPLATE_CHECK:-}'. Usage: env-run check <.env.template>"
+    fi
+
+    require_bw
+    check_bw_session
+
+    step "Checking references in $TEMPLATE_CHECK"
+    check_errors=0
+    check_ok=0
+
+    while IFS= read -r line || [ -n "$line" ]; do
+        case "$line" in
+            ''|'#'*) continue ;;
+        esac
+        key="${line%%=*}"
+        val="${line#*=}"
+        case "$key" in
+            ''|*[!A-Za-z0-9_]*) continue ;;
+        esac
+        case "$val" in
+            bw://*)
+                ref="${val#bw://}"
+                item="${ref%/*}"
+                field="${ref##*/}"
+                if bw_get_field "$item" "$field" >/dev/null 2>&1; then
+                    ok "  $key (bw://${item}/${field})"
+                    check_ok=$((check_ok + 1))
+                else
+                    warn "  $key — NOT FOUND: bw://${item}/${field}"
+                    check_errors=$((check_errors + 1))
+                fi
+                ;;
+        esac
+    done < "$TEMPLATE_CHECK"
+
+    printf "\n" >&2
+    if [ "$check_errors" -gt 0 ]; then
+        warn "$check_ok references found, $check_errors NOT RESOLVABLE."
+        exit 1
+    else
+        ok "$check_ok references checked — all resolvable."
+        exit 0
+    fi
+fi
+
+# =============================================================================
+# Hauptmodus: env-run [Optionen] -- <befehl> [args...]
+# =============================================================================
+if [ "${#CMD_ARRAY[@]}" -eq 0 ]; then
+    err "No command specified. Usage: env-run [--env-file .env.template] -- <command>"
+fi
+
+if [ ! -f "$ENV_FILE" ]; then
+    err "Template not found: $ENV_FILE\n  Create: env-run migrate .env"
+fi
+
+# Dry-run does not need bw (only read the template)
+if [ "$DRY_RUN_MODE" = "0" ]; then
+    require_bw
+    check_bw_session
+fi
+
+# Start bw serve if requested
+if [ "$USE_SERVE" = "1" ] || [ "${BW_SERVE:-0}" = "1" ]; then
+    if [ "$DRY_RUN_MODE" = "0" ]; then
+        _start_bw_serve || USE_SERVE=0
+    fi
+fi
+
+# Ensure bw serve is stopped when the script exits
+trap '_stop_bw_serve' EXIT INT TERM
+
+# =============================================================================
+# Read template and resolve references
+# Parallel arrays: ENV_KEYS and ENV_VALS (bash 3.2-compatible)
+# =============================================================================
+ENV_KEYS=()
+ENV_VALS=()
+
+step "env-run: ${CMD_ARRAY[*]}"
+info "Template: $ENV_FILE"
+
+while IFS= read -r line || [ -n "$line" ]; do
+    # Skip comments and blank lines
+    case "$line" in
+        ''|'#'*) continue ;;
+    esac
+
+    # Remove inline comment (only when space before #)
+    # KEY=VALUE #comment → KEY=VALUE
+    key="${line%%=*}"
+    val="${line#*=}"
+
+    # Validate key (only A-Z, a-z, 0-9, _)
+    case "$key" in
+        ''|*[!A-Za-z0-9_]*)
+            warn "Skipping invalid line: $line"
+            continue
+            ;;
+    esac
+
+    case "$val" in
+        bw://*)
+            # Resolve bw:// reference
+            ref="${val#bw://}"
+            item="${ref%/*}"
+            field="${ref##*/}"
+
+            if [ "$DRY_RUN_MODE" = "1" ]; then
+                ENV_KEYS+=("$key")
+                ENV_VALS+=("[bw://${item}/${field}]")
+            else
+                resolved=$(resolve_reference "$item" "$field")
+                ENV_KEYS+=("$key")
+                ENV_VALS+=("$resolved")
+            fi
+            ;;
+        *)
+            # Pass literal value through (for non-secret configuration)
+            ENV_KEYS+=("$key")
+            ENV_VALS+=("$val")
+            ;;
+    esac
+done < "$ENV_FILE"
+
+# =============================================================================
+# Dry-Run: Variablen anzeigen ohne Werte
+# =============================================================================
+if [ "$DRY_RUN_MODE" = "1" ]; then
+    info "Dry-run: the following variables would be set (values masked):"
+    i=0
+    while [ "$i" -lt "${#ENV_KEYS[@]}" ]; do
+        # Mask literal values too: a template may accidentally contain a real
+        # secret in plaintext, and dry-run is often used in shared terminals or
+        # CI logs. Only reveal the length.
+        printf "  %s → [%s chars]\n" "${ENV_KEYS[$i]}" "${#ENV_VALS[$i]}" >&2
+        i=$((i + 1))
+    done
+    printf "\n" >&2
+    info "Command (not run): ${CMD_ARRAY[*]}"
+    exit 0
+fi
+
+# =============================================================================
+# Inject secrets into process environment and start command
+#
+# Mechanism: values are set with `export` in a subshell (not as arguments to
+# `env`), so they do NOT appear in `ps` output. `exec` replaces the subshell
+# with the target command — which inherits the env variables.
+# =============================================================================
+info "${#ENV_KEYS[@]} variables resolved — starting ${CMD_ARRAY[0]}"
+
+(
+    i=0
+    while [ "$i" -lt "${#ENV_KEYS[@]}" ]; do
+        # printf '%q' generates shell-safe quoting for eval
+        eval "export $(printf '%s' "${ENV_KEYS[$i]}")=$(printf '%q' "${ENV_VALS[$i]}")"
+        i=$((i + 1))
+    done
+    exec -- "${CMD_ARRAY[@]}"
+)

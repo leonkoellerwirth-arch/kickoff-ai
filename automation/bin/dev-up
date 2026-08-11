@@ -1,0 +1,105 @@
+#!/usr/bin/env bash
+# =============================================================================
+# automation/bin/dev-up — Start a Docker Compose stack for a project
+#
+# Problem:    16 containers run permanently, some for weeks, including 5 MySQL
+#             instances (INVENTORY §5, gap analysis A.13). No unified command
+#             for starting a specific project.
+# Does:       Finds docker-compose.yml / compose.yaml in ~/dev/<project> and
+#             starts the stack. Without argument: lists all available stacks
+#             under ~/dev/.
+# Changes:    Starts Docker containers (with docker compose up -d).
+# Usage:      dev-up [<project>] [--dry-run] [--help]
+#             dev-up             # list available stacks
+#             dev-up myproject   # start ~/dev/myproject/docker-compose.yml
+# =============================================================================
+set -euo pipefail
+
+AUTOMATION_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$AUTOMATION_DIR/lib-automation.sh"
+
+# =============================================================================
+# Argument-Parsing
+# =============================================================================
+PROJEKT=""
+
+for arg in "$@"; do
+    case "$arg" in
+        --dry-run)  DRY_RUN=1 ;;
+        --help|-h)
+            cat >&2 <<'EOF'
+Usage: dev-up [<project>] [--dry-run] [--help]
+
+  Starts the Docker Compose stack of a project under ~/dev/<project>.
+  Without argument, all available stacks are listed.
+
+Options:
+  --dry-run   Show what would be started without doing it
+  --help      This help
+
+Examples:
+  dev-up                    # List available Compose stacks
+  dev-up myproject          # Start ~/dev/myproject/docker-compose.yml
+  dev-up myproject --dry-run
+EOF
+            exit 0
+            ;;
+        -*)
+            err "Unknown option: $arg (--help for help)"
+            ;;
+        *)
+            PROJEKT="$arg"
+            ;;
+    esac
+done
+
+require_docker
+
+# =============================================================================
+# Without argument: list available stacks
+# =============================================================================
+if [ -z "$PROJEKT" ]; then
+    step "Available Docker Compose stacks under $DEV_DIR"
+    found=0
+    for d in "$DEV_DIR"/*/; do
+        [ -d "$d" ] || continue
+        if find_compose_file "$d" >/dev/null 2>&1; then
+            compose_file=$(find_compose_file "$d")
+            name=$(basename "$d")
+            printf "  %-30s %s\n" "$name" "$compose_file" >&2
+            found=$((found + 1))
+        fi
+    done
+    if [ "$found" -eq 0 ]; then
+        warn "No Compose stacks found under $DEV_DIR."
+    else
+        info "$found stack(s) found. Start with: dev-up <project-name>"
+    fi
+    exit 0
+fi
+
+# =============================================================================
+# Start project stack
+# =============================================================================
+PROJEKT_DIR="$DEV_DIR/$PROJEKT"
+
+if [ ! -d "$PROJEKT_DIR" ]; then
+    err "Project directory not found: $PROJEKT_DIR"
+fi
+
+compose_file=$(find_compose_file "$PROJEKT_DIR") || {
+    err "No Compose file found in $PROJEKT_DIR (docker-compose.yml / compose.yaml)"
+}
+
+step "Starting stack: $PROJEKT"
+info "Compose file: $compose_file"
+
+if [ "$DRY_RUN" = "1" ]; then
+    info "[dry-run] Would run: docker compose -f $compose_file up -d"
+    info "[dry-run] Services in Compose file:"
+    grep -E '^\s{2}[a-zA-Z][a-zA-Z0-9_-]+:' "$compose_file" 2>/dev/null | sed 's/://; s/^  */  /' >&2 || true
+    exit 0
+fi
+
+docker compose -f "$compose_file" up -d
+ok "Stack '$PROJEKT' started. Status: dev-ps $PROJEKT"

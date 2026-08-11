@@ -1,0 +1,28 @@
+services:
+  vaultwarden:
+    image: vaultwarden/server:latest
+    container_name: vaultwarden
+    restart: unless-stopped
+    volumes:
+      - vw-data:/data
+    environment:
+      # Full URL — used in emails and invitation links
+      DOMAIN: "${DOMAIN:-http://localhost:8080}"
+      # Registration for initial setup only — set to false afterwards!
+      SIGNUPS_ALLOWED: "${SIGNUPS_ALLOWED:-true}"
+      # Admin token: store as Argon2 hash (never plaintext in production).
+      # Generate: docker run --rm vaultwarden/server vaultwarden hash --preset owasp
+      ADMIN_TOKEN: "${ADMIN_TOKEN}"
+    ports:
+      # Bind to localhost only — no direct external access
+      - "127.0.0.1:8080:80"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:80/alive"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  vw-data:
+    driver: local

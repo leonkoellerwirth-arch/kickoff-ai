@@ -1,0 +1,579 @@
+#!/usr/bin/env bash
+# =============================================================================
+# automation/bin/up2date — Currency checker for the tool registry
+#
+# Purpose:  Checks every active/candidate entry in manifests/tools.yaml against
+#           upstream and reports: updates, sunset candidates, missing entries,
+#           review due dates. Read-only against the system — never installs
+#           or uninstalls anything.
+# Problem:  A setup repo is correct on the day it was created — never again.
+#           Tools evolve, some die. This checker keeps drift visible.
+# Changes:  Only with --apply-versions: version_seen + reviewed in tools.yaml,
+#           STATE.json. Never: status, installed software.
+# Requires: bash 3.2+, yq (v4+), jq, curl; brew/npm/mas optional depending on entries
+# Usage:    automation/bin/up2date [check] [--json] [--markdown] [--report]
+#           automation/bin/up2date --consistency [--offline]
+#           automation/bin/up2date --apply-versions
+#           automation/bin/up2date --only <update|sunset|adoption|review>
+#           automation/bin/up2date --level <0-3>
+#           automation/bin/up2date --offline
+#           automation/bin/up2date --help
+# =============================================================================
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+AUTOMATION_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+REPO_ROOT="$(cd "$AUTOMATION_DIR/.." && pwd)"
+
+source "$AUTOMATION_DIR/lib-currency.sh"
+
+# =============================================================================
+# Global options (defaults)
+# =============================================================================
+CMD="check"
+OPT_JSON=0
+OPT_MARKDOWN=0
+OPT_REPORT=0
+OPT_OFFLINE=0
+OPT_ONLY=""        # update|sunset|adoption|review
+OPT_LEVEL=""       # 0|1|2|3
+OPT_DRY_RUN="${DRY_RUN:-0}"
+CI_MODE="${CI:-0}"
+
+usage() {
+    cat >&2 <<'EOF'
+Usage: up2date [SUBCOMMAND] [OPTIONS]
+
+Subcommands:
+  check (default)   Checks every active/candidate entry against upstream
+
+Options:
+  --json            Output as JSON (for workflow integration)
+  --markdown        Output as Markdown report
+  --report          Writes report to local/up2date-report.md
+  --offline         No network access (consistency check only)
+  --consistency     Checks registry against Brewfile*, ollama-models.txt, vscode-extensions.txt
+  --apply-versions  Writes upstream versions back to version_seen + reviewed
+  --only <cat>      One category only: update|sunset|adoption|review
+  --level <n>       Entries at level n or above (0-3)
+  --help            Show this help
+
+Exit codes:
+  0  All current / no drift
+  1  Drift found (updates, sunset candidates, review due)
+  2  Error (yq/jq missing, tools.yaml unreadable, etc.)
+
+Important: this command never installs or uninstalls anything.
+           Updates are only written to the registry with --apply-versions.
+           Installation is a deliberate second step:
+             mac-update --only brew    (Homebrew)
+             ./scripts/07-ai-stack.sh  (AI stack)
+EOF
+}
+
+# =============================================================================
+# Argument parsing
+# =============================================================================
+while [ $# -gt 0 ]; do
+    case "$1" in
+        check) CMD="check"; shift ;;
+        --consistency) CMD="consistency"; shift ;;
+        --apply-versions) CMD="apply"; shift ;;
+        --json) OPT_JSON=1; shift ;;
+        --markdown) OPT_MARKDOWN=1; shift ;;
+        --report) OPT_REPORT=1; shift ;;
+        --offline) OPT_OFFLINE=1; shift ;;
+        --only)
+            OPT_ONLY="${2:-}"
+            shift 2
+            ;;
+        --level)
+            OPT_LEVEL="${2:-}"
+            shift 2
+            ;;
+        --dry-run) OPT_DRY_RUN=1; shift ;;
+        --help|-h) usage; exit 0 ;;
+        *) warn "Unknown option: $1"; usage; exit 2 ;;
+    esac
+done
+
+# =============================================================================
+# Prerequisite check
+# =============================================================================
+require_yq
+require_jq
+
+if [ ! -f "$TOOLS_YAML" ]; then
+    err "Registry not found: $TOOLS_YAML"
+fi
+
+# =============================================================================
+# Data structures (bash 3.2-compatible: parallel arrays instead of associative)
+# =============================================================================
+# Indices:
+RES_IDS=()        # tool-id
+RES_NAME=()       # display name
+RES_CAT=()        # update|sunset|adoption|review (finding category)
+RES_SEEN=()       # version_seen
+RES_UPSTREAM=()   # upstream version
+RES_MSG=()        # note text
+RES_CMD=()        # recommended follow-up command
+
+_add_result() {
+    local id="$1" name="$2" cat="$3" seen="$4" upstream="$5" msg="$6" cmd="$7"
+    RES_IDS[${#RES_IDS[@]}]="$id"
+    RES_NAME[${#RES_NAME[@]}]="$name"
+    RES_CAT[${#RES_CAT[@]}]="$cat"
+    RES_SEEN[${#RES_SEEN[@]}]="$seen"
+    RES_UPSTREAM[${#RES_UPSTREAM[@]}]="$upstream"
+    RES_MSG[${#RES_MSG[@]}]="$msg"
+    RES_CMD[${#RES_CMD[@]}]="$cmd"
+}
+
+# =============================================================================
+# Main logic: upstream check
+# =============================================================================
+run_check() {
+    local ids_to_check
+    ids_to_check=$(registry_checkable_ids)
+
+    local checked=0 errs=0
+    local id name version_seen version_check check_ref reviewed level
+
+    # Temporary file for sunset signals (between subshell and parent)
+    local sunset_signal_file
+    sunset_signal_file=$(mktemp)
+
+    while IFS= read -r id; do
+        [ -z "$id" ] && continue
+
+        name=$(registry_get "$id" "name")
+        version_seen=$(registry_get "$id" "version_seen")
+        version_check=$(registry_get "$id" "version_check")
+        check_ref=$(registry_get "$id" "check_ref")
+        reviewed=$(registry_get "$id" "reviewed")
+        level=$(registry_get "$id" "level")
+
+        # Level filter
+        if [ -n "$OPT_LEVEL" ] && [ "${level:-0}" -lt "$OPT_LEVEL" ] 2>/dev/null; then
+            continue
+        fi
+
+        checked=$((checked + 1))
+
+        # --- Review due (180 days) ---
+        if [ -z "$OPT_ONLY" ] || [ "$OPT_ONLY" = "review" ]; then
+            if date_is_stale "${reviewed:-2000-01-01}" 180; then
+                _add_result "$id" "$name" "review" "${version_seen:-}" "" \
+                    "Last reviewed: ${reviewed:-unknown} — older than 180 days" \
+                    "automation/bin/sunset adopt $id  # oder propose"
+            fi
+        fi
+
+        # --- Offline: no network access ---
+        if [ "$OPT_OFFLINE" = "1" ] || [ "$version_check" = "manual" ]; then
+            continue
+        fi
+
+        # --- Fetch upstream version ---
+        local upstream_version sunset_signal
+        sunset_signal=""
+        upstream_version=$(fetch_upstream_version "$version_check" "$check_ref" 2>"$sunset_signal_file" || echo "unknown")
+        sunset_signal=$(cat "$sunset_signal_file" 2>/dev/null | grep '^SUNSET_SIGNAL:' | sed 's/^SUNSET_SIGNAL://' || echo "")
+        : > "$sunset_signal_file"
+
+        if [ "$upstream_version" = "unknown" ] || [ "$upstream_version" = "manual" ]; then
+            errs=$((errs + 1))
+            continue
+        fi
+
+        # --- Sunset candidate: deprecated/archived upstream ---
+        if [ -n "$sunset_signal" ]; then
+            if [ -z "$OPT_ONLY" ] || [ "$OPT_ONLY" = "sunset" ]; then
+                _add_result "$id" "$name" "sunset" "${version_seen:-}" "$upstream_version" \
+                    "Upstream signal: $sunset_signal" \
+                    "automation/bin/sunset propose $id --reason \"$sunset_signal\""
+            fi
+            continue
+        fi
+
+        # --- Update available ---
+        if version_gt "$upstream_version" "${version_seen:-0}"; then
+            if [ -z "$OPT_ONLY" ] || [ "$OPT_ONLY" = "update" ]; then
+                local update_cmd
+                case "$version_check" in
+                    brew) update_cmd="mac-update --only brew" ;;
+                    npm)  update_cmd="npm update -g ${check_ref}" ;;
+                    *)    update_cmd="# Update manually: $name $upstream_version" ;;
+                esac
+                _add_result "$id" "$name" "update" "${version_seen:-?}" "$upstream_version" \
+                    "Update available" \
+                    "$update_cmd"
+            fi
+        fi
+
+    done <<EOF
+$ids_to_check
+EOF
+
+    rm -f "$sunset_signal_file"
+
+    # --- Adoption candidates (local only, skip in CI) ---
+    if [ "$CI_MODE" = "0" ] && ([ -z "$OPT_ONLY" ] || [ "$OPT_ONLY" = "adoption" ]); then
+        _check_adoption_candidates
+    fi
+
+    _output_results "$checked" "$errs"
+}
+
+# Checks locally installed tools that are not in the registry
+_check_adoption_candidates() {
+    local registry_refs
+    registry_refs=$(yq e '.[].ref' "$TOOLS_YAML" 2>/dev/null | sort)
+
+    # brew leaves
+    if have brew; then
+        local leaf
+        while IFS= read -r leaf; do
+            [ -z "$leaf" ] && continue
+            if ! printf '%s' "$registry_refs" | grep -qx "$leaf"; then
+                _add_result "$leaf" "$leaf" "adoption" "" "" \
+                    "Installed locally via brew, but not in registry" \
+                    "# Add entry to manifests/tools.yaml, then: automation/bin/sunset adopt $leaf"
+            fi
+        done <<EOF
+$(brew leaves 2>/dev/null || true)
+EOF
+    fi
+
+    # npm global
+    if have npm; then
+        local pkg
+        while IFS= read -r pkg; do
+            [ -z "$pkg" ] && continue
+            pkg=$(printf '%s' "$pkg" | awk '{print $1}' | tr -d ' ')
+            [ "$pkg" = "npm" ] && continue
+            if ! printf '%s' "$registry_refs" | grep -qFx "$pkg"; then
+                _add_result "$pkg" "$pkg" "adoption" "" "" \
+                    "Installed locally via npm globally, but not in registry" \
+                    "# Add entry to manifests/tools.yaml, then: automation/bin/sunset adopt $pkg"
+            fi
+        done <<EOF
+$(npm ls -g --depth=0 --parseable 2>/dev/null | tail -n +2 | xargs -I{} basename {} 2>/dev/null || true)
+EOF
+    fi
+}
+
+# =============================================================================
+# Consistency check: registry vs. implementation lists
+# =============================================================================
+run_consistency() {
+    local exit_code=0
+
+    step "Consistency check: registry vs. implementation lists"
+
+    # All active refs from the registry (brew formulae)
+    local active_brew_refs
+    active_brew_refs=$(yq e '.[] | select(.status == "active" and (.source == "brew" or .source == "cask")) | .ref' "$TOOLS_YAML" 2>/dev/null | sort)
+
+    # All sunset refs (must no longer appear in lists)
+    local sunset_refs
+    sunset_refs=$(yq e '.[] | select(.status == "sunset") | .ref' "$TOOLS_YAML" 2>/dev/null)
+
+    # Search all Brewfiles
+    local brewfiles=""
+    for bf in "$REPO_ROOT"/Brewfile "$REPO_ROOT"/Brewfile.*; do
+        [ -f "$bf" ] && brewfiles="$brewfiles $bf"
+    done
+
+    # Sunset entries in Brewfiles → error
+    local sunset_ref
+    while IFS= read -r sunset_ref; do
+        [ -z "$sunset_ref" ] && continue
+        # Tap-qualified refs (owner/tap/name) also appear in Brewfiles in
+        # short form — exactly as `brew bundle dump` writes casks.
+        # Check both forms; otherwise a retired tool can silently return
+        # via a snapshot.
+        local sunset_short="${sunset_ref##*/}"
+        local bf
+        for bf in $brewfiles; do
+            # Check only non-commented lines
+            local uncommented
+            uncommented=$(grep -v '^[[:space:]]*#' "$bf" 2>/dev/null)
+            if printf '%s' "$uncommented" | grep -qF "\"$sunset_ref\""; then
+                err "ERROR: Sunset entry '$sunset_ref' still in $(basename "$bf") — remove it!"
+                exit_code=1
+            elif [ "$sunset_short" != "$sunset_ref" ] &&
+                 printf '%s' "$uncommented" | grep -qF "\"$sunset_short\""; then
+                err "ERROR: Sunset entry '$sunset_ref' appears as '$sunset_short' in $(basename "$bf") — remove it!"
+                exit_code=1
+            fi
+        done
+    done <<EOF
+$sunset_refs
+EOF
+
+    # Active refs in registry that are missing from all Brewfiles
+    local active_ref
+    while IFS= read -r active_ref; do
+        [ -z "$active_ref" ] && continue
+        local found=0
+        local bf
+        for bf in $brewfiles; do
+            grep -qF "\"$active_ref\"" "$bf" 2>/dev/null && found=1 && break
+        done
+        if [ "$found" = "0" ]; then
+            warn "Registry entry '$active_ref' (active) missing from all Brewfiles"
+        fi
+    done <<EOF
+$active_brew_refs
+EOF
+
+    # Ollama model consistency
+    local ollama_manifest="$REPO_ROOT/automation/manifests/ollama-models.txt"
+    if [ -f "$ollama_manifest" ]; then
+        local active_ollama
+        active_ollama=$(yq e '.[] | select(.status == "active" and .source == "ollama") | .ref' "$TOOLS_YAML" 2>/dev/null | sort)
+
+        local model
+        while IFS= read -r model; do
+            [ -z "$model" ] && continue
+            if ! printf '%s' "$active_ollama" | grep -qFx "$model"; then
+                warn "ollama-models.txt: '$model' not in registry as active/source:ollama"
+            fi
+        done <<EOF
+$(parse_manifest_txt "$ollama_manifest")
+EOF
+
+        # Sunset models still in manifest?
+        local sunset_ollama
+        sunset_ollama=$(yq e '.[] | select(.status == "sunset" and .source == "ollama") | .ref' "$TOOLS_YAML" 2>/dev/null)
+        while IFS= read -r model; do
+            [ -z "$model" ] && continue
+            if parse_manifest_txt "$ollama_manifest" | grep -qFx "$model"; then
+                err "ERROR: Sunset model '$model' still in ollama-models.txt — remove it!"
+                exit_code=1
+            fi
+        done <<EOF
+$sunset_ollama
+EOF
+    fi
+
+    # VS Code extensions: rough check only (file exists, not fully compared)
+    local vscode_ext="$REPO_ROOT/config/vscode-extensions.txt"
+    if [ -f "$vscode_ext" ]; then
+        ok "config/vscode-extensions.txt found ($(grep -c '^[^#]' "$vscode_ext" 2>/dev/null) extensions)"
+    fi
+
+    if [ "$exit_code" = "0" ]; then
+        ok "Consistency check passed"
+    fi
+
+    return "$exit_code"
+}
+
+# =============================================================================
+# Write versions back
+# =============================================================================
+run_apply_versions() {
+    step "Writing upstream versions back to tools.yaml..."
+
+    if [ "$OPT_DRY_RUN" = "1" ]; then
+        info "[dry-run] Would update version_seen and reviewed"
+        return 0
+    fi
+
+    local id name version_check check_ref upstream_version
+    local sunset_signal_file
+    sunset_signal_file=$(mktemp)
+    local today_str
+    today_str=$(today)
+    local updated=0
+
+    while IFS= read -r id; do
+        [ -z "$id" ] && continue
+        name=$(registry_get "$id" "name")
+        version_check=$(registry_get "$id" "version_check")
+        check_ref=$(registry_get "$id" "check_ref")
+
+        [ "$version_check" = "manual" ] && continue
+
+        upstream_version=$(fetch_upstream_version "$version_check" "$check_ref" 2>"$sunset_signal_file" || echo "unknown")
+        : > "$sunset_signal_file"
+
+        if [ "$upstream_version" = "unknown" ] || [ "$upstream_version" = "manual" ]; then
+            continue
+        fi
+
+        registry_set "$id" "version_seen" "$upstream_version"
+        registry_set "$id" "reviewed" "$today_str"
+        updated=$((updated + 1))
+        ok "  $name: version_seen=$upstream_version"
+
+    done <<EOF
+$(registry_checkable_ids)
+EOF
+
+    rm -f "$sunset_signal_file"
+
+    # Update STATE.json
+    local now
+    now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+    printf '{\n  "last_check": "%s",\n  "checked_count": %d,\n  "note": "Via up2date --apply-versions"\n}\n' \
+        "$now" "$updated" > "$STATE_JSON"
+
+    ok "$updated entries updated"
+}
+
+# =============================================================================
+# Output formatter
+# =============================================================================
+_output_results() {
+    local checked="${1:-0}"
+    local errs="${2:-0}"
+    local total="${#RES_IDS[@]}"
+
+    # Update STATE.json
+    local now upd sun adop rev
+    now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+    upd=0; sun=0; adop=0; rev=0
+    local i
+    for i in $(seq 0 $((total - 1))); do
+        case "${RES_CAT[$i]}" in
+            update)   upd=$((upd + 1)) ;;
+            sunset)   sun=$((sun + 1)) ;;
+            adoption) adop=$((adop + 1)) ;;
+            review)   rev=$((rev + 1)) ;;
+        esac
+    done
+    local drift_found="false"
+    [ "$total" -gt 0 ] && drift_found="true"
+
+    printf '{\n  "last_check": "%s",\n  "checked_count": %d,\n  "update_available": %d,\n  "sunset_candidate": %d,\n  "adoption_candidate": %d,\n  "review_due": %d,\n  "drift_found": %s\n}\n' \
+        "$now" "$checked" "$upd" "$sun" "$adop" "$rev" "$drift_found" > "$STATE_JSON"
+
+    # JSON output
+    if [ "$OPT_JSON" = "1" ]; then
+        local json_items=""
+        for i in $(seq 0 $((total - 1))); do
+            [ -n "$json_items" ] && json_items="$json_items,"
+            json_items="$json_items
+  {\"id\":\"${RES_IDS[$i]}\",\"name\":\"${RES_NAME[$i]}\",\"category\":\"${RES_CAT[$i]}\",\"version_seen\":\"${RES_SEEN[$i]}\",\"upstream\":\"${RES_UPSTREAM[$i]}\",\"message\":\"${RES_MSG[$i]}\",\"command\":\"${RES_CMD[$i]}\"}"
+        done
+        printf '[%s\n]\n' "$json_items"
+        [ "$total" -gt 0 ] && return 1
+        return 0
+    fi
+
+    # Markdown output
+    if [ "$OPT_MARKDOWN" = "1" ] || [ "$OPT_REPORT" = "1" ]; then
+        local md_content
+        md_content=$(printf '# up2date Report — %s\n\n' "$(today)")
+        md_content="$md_content$(printf 'Checked entries: %d | Findings: %d | Errors: %d\n\n' "$checked" "$total" "$errs")"
+
+        local cat
+        for cat in update sunset adoption review; do
+            local cat_items=0
+            for i in $(seq 0 $((total - 1))); do
+                [ "${RES_CAT[$i]}" = "$cat" ] && cat_items=$((cat_items + 1))
+            done
+            [ "$cat_items" = "0" ] && continue
+
+            case "$cat" in
+                update)   md_content="$md_content## Updates available ($cat_items)\n\n" ;;
+                sunset)   md_content="$md_content## Sunset candidates ($cat_items)\n\n" ;;
+                adoption) md_content="$md_content## Adoption candidates ($cat_items)\n\n" ;;
+                review)   md_content="$md_content## Review due ($cat_items)\n\n" ;;
+            esac
+
+            md_content="$md_content| Tool | Seen | Upstream | Note | Command |\n"
+            md_content="$md_content|---|---|---|---|---|\n"
+
+            for i in $(seq 0 $((total - 1))); do
+                [ "${RES_CAT[$i]}" != "$cat" ] && continue
+                md_content="$md_content| ${RES_NAME[$i]} | ${RES_SEEN[$i]:-—} | ${RES_UPSTREAM[$i]:-—} | ${RES_MSG[$i]} | \`${RES_CMD[$i]}\` |\n"
+            done
+            md_content="$md_content\n"
+        done
+
+        md_content="$md_content---\n*Generated by \`automation/bin/up2date\`. Installation is a deliberate second step.*\n"
+
+        if [ "$OPT_REPORT" = "1" ]; then
+            ensure_local_dir
+            local report_file="$LOCAL_DIR/up2date-report.md"
+            printf '%b' "$md_content" > "$report_file"
+            ok "Report written: $report_file"
+        fi
+
+        if [ "$OPT_MARKDOWN" = "1" ]; then
+            printf '%b' "$md_content"
+        fi
+
+        [ "$total" -gt 0 ] && return 1
+        return 0
+    fi
+
+    # Terminal table
+    if [ "$total" = "0" ]; then
+        ok "All current — no findings ($checked checked)"
+        return 0
+    fi
+
+    printf '\n%s%s=== up2date findings (%d) ===%s\n\n' "$_BOLD" "$_CYAN" "$total" "$_RESET" >&2
+
+    local cat
+    for cat in update sunset adoption review; do
+        local header_printed=0
+        for i in $(seq 0 $((total - 1))); do
+            [ "${RES_CAT[$i]}" != "$cat" ] && continue
+
+            if [ "$header_printed" = "0" ]; then
+                case "$cat" in
+                    update)   printf '%s%s  Updates available:%s\n' "$_BOLD" "$_GREEN" "$_RESET" >&2 ;;
+                    sunset)   printf '%s%s  Sunset candidates:%s\n' "$_BOLD" "$_YELLOW" "$_RESET" >&2 ;;
+                    adoption) printf '%s%s  Adoption candidates:%s\n' "$_BOLD" "$_BLUE" "$_RESET" >&2 ;;
+                    review)   printf '%s%s  Review due:%s\n' "$_BOLD" "$_YELLOW" "$_RESET" >&2 ;;
+                esac
+                header_printed=1
+            fi
+
+            local seen_str upstream_str
+            seen_str="${RES_SEEN[$i]:-—}"
+            upstream_str="${RES_UPSTREAM[$i]:-—}"
+
+            printf '  %-30s  %-12s → %-12s  %s\n' \
+                "${RES_NAME[$i]}" "$seen_str" "$upstream_str" "${RES_MSG[$i]}" >&2
+
+            if [ -n "${RES_CMD[$i]}" ]; then
+                printf '    %s→%s  %s\n' "$_CYAN" "$_RESET" "${RES_CMD[$i]}" >&2
+            fi
+        done
+        [ "$header_printed" = "1" ] && printf '\n' >&2
+    done
+
+    printf '%sNote: Installation is a deliberate second step.%s\n' "$_YELLOW" "$_RESET" >&2
+    printf '%sNothing is ever installed or uninstalled automatically.%s\n\n' "$_YELLOW" "$_RESET" >&2
+
+    return 1
+}
+
+# =============================================================================
+# Entry point
+# =============================================================================
+case "$CMD" in
+    consistency)
+        run_consistency
+        exit $?
+        ;;
+    apply)
+        run_apply_versions
+        exit 0
+        ;;
+    check)
+        run_check
+        ;;
+    *)
+        usage
+        exit 2
+        ;;
+esac
