@@ -14,6 +14,10 @@ Semantics for this repo:
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [0.1.0] — 2026-08-11
+
 ### Added
 - Paved-road adoption via `base sync`: backbone scripts (`gate.sh`, `secure.sh`, `budget.sh`, `session-snapshot.sh`, `state.sh`, `context.sh`), session skills under `.claude/skills/`, `.editorconfig`, `.pre-commit-config.yaml`, `.github/CODEOWNERS`
 - `BIBLE.md` — repo invariants (INV-1 … INV-9) and decision register
