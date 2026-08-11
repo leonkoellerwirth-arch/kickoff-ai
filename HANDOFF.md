@@ -3,6 +3,24 @@
 Session handoffs, **newest entry first**. Written by `/session-stop` (via
 `scripts/session-snapshot.sh`). Read the top entry at `/session-start`.
 
+## 2026-08-11 — Public repository review
+
+- **Done:** An independent high-rigor review of the public GitHub repository is
+  available at `docs/reviews/2026-08-11-public-repository-review.md`. It first
+  establishes the intended outcome and non-goals, then records 15 verified,
+  evidence-backed findings with counter-checks and scoped actions. The review
+  treats deliberate limits as decisions rather than defects.
+- **Decided:** No implementation or policy decision was made from the review.
+  Its prioritisation is input for a separate maintainer decision.
+- **Open:** Address the release-blocking publication and execution-path risks
+  (K1/K2), then choose the public trust-boundary, lifecycle and macOS-support
+  decisions listed in the report.
+- **Next:** Convert only approved review actions into narrowly scoped changes;
+  use the report's acceptance criteria and rerun the gate after each change.
+- **Continuity warnings:** `scripts/gate.sh` currently aborts before its
+  promised `GATE: PASS`/`GATE: FAIL` verdict; the review captures the evidence
+  and it must not be treated as a successful gate run.
+
 ## 2026-08-11 — Session 1 (repo built from zero and published)
 
 _HEAD 9b59f9c · gate PASS · CI green · published public_
