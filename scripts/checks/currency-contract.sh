@@ -61,7 +61,10 @@ assert_ok() {
 # --- 1. zero findings: valid JSON, exit 0, no crash -------------------------
 # --level 3 offline yields no findings on a healthy registry, which is exactly
 # the path that used to abort with "RES_CAT[0]: unbound variable".
-out="$(CI=1 "$CHECK_ROOT/automation/bin/up2date" check --offline --json --level 3 2>/dev/null)"
+# STATE_JSON redirected to a temp file: this check must not modify the tracked
+# manifests/STATE.json it is running against.
+out="$(CI=1 STATE_JSON="$(mktemp)" "$CHECK_ROOT/automation/bin/up2date" \
+    check --offline --json --level 3 2>/dev/null)"
 code=$?
 assert_eq "zero findings exits 0" "$code" "0"
 if printf '%s' "$out" | jq -e 'type == "array"' >/dev/null 2>&1; then

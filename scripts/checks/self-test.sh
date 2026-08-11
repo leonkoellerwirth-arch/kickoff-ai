@@ -12,6 +12,7 @@
 #                where a missing PyYAML aborted the gate before the secret and
 #                customer-name scans and before any verdict at all
 #             4. the registry schema validator rejects a known-invalid fixture
+#             5. the gate changes nothing in the tree it is judging
 #
 # Changes:  Nothing in this repo — all work happens in a temp clone that is
 #           removed on exit.
@@ -62,6 +63,12 @@ rm -rf "$WORK/local"
 
 # --- 1. clean tree -----------------------------------------------------------
 echo "  case 1: clean tree"
+
+# Snapshot before, compare after. The copy inherits whatever is uncommitted in
+# the real tree, so "is it dirty" says nothing; only the DIFFERENCE the gate
+# makes is meaningful.
+before_status="$(git -C "$WORK" status --porcelain 2>/dev/null)"
+
 clean_out="$("$WORK/scripts/gate.sh" 2>&1)"
 clean_code=$?
 [ "$(verdict_count "$clean_out")" = "1" ] && assert ok "exactly one verdict" \
@@ -69,6 +76,19 @@ clean_code=$?
 grep -q '^GATE: PASS$' <<<"$clean_out" && assert ok "verdict is PASS" \
     || assert no "verdict is PASS"
 [ "$clean_code" -eq 0 ] && assert ok "exit 0" || assert no "exit 0 (got $clean_code)"
+
+# The gate must not modify the tree it is judging. currency-contract.sh and
+# registry-consistency.sh both invoke up2date, which rewrites the tracked
+# manifests/STATE.json — so for a while the gate dirtied the worktree on every
+# run, including the one it was judging. Both now redirect STATE_JSON to a temp
+# file; this asserts it stays that way.
+after_status="$(git -C "$WORK" status --porcelain 2>/dev/null)"
+if [ "$before_status" = "$after_status" ]; then
+    assert ok "the gate changed nothing in the tree"
+else
+    assert no "the gate modified the tree it was judging:
+$(diff <(printf '%s\n' "$before_status") <(printf '%s\n' "$after_status") | sed 's/^/      /')"
+fi
 
 # --- 2./3. deliberately broken tree -----------------------------------------
 # Two independent defects are planted: a shell syntax error, caught by the

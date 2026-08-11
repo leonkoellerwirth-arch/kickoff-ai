@@ -26,8 +26,12 @@ source "$_LIB_CURRENCY_DIR/lib-automation.sh"
 
 # Path to the registry
 TOOLS_YAML="$_REPO_ROOT/manifests/tools.yaml"
+# Overridable so a read-only caller can redirect the write. up2date always
+# refreshes STATE.json, which is a tracked file — fine when a human runs the
+# check, not fine when the GATE runs it, because the gate promises to change
+# nothing and would otherwise dirty the worktree it is judging.
 # shellcheck disable=SC2034  # STATE_JSON, CHANGELOG_MD are used by up2date/sunset after sourcing
-STATE_JSON="$_REPO_ROOT/manifests/STATE.json"
+STATE_JSON="${STATE_JSON:-$_REPO_ROOT/manifests/STATE.json}"
 CHANGELOG_MD="$_REPO_ROOT/CHANGELOG.md"
 
 # Network timeout in seconds

@@ -3,9 +3,9 @@
 Session handoffs, **newest entry first**. Written by `/session-stop` (via
 `scripts/session-snapshot.sh`). Read the top entry at `/session-start`.
 
-## 2026-08-11 — Review remediation (all 15 findings)
+## 2026-08-11 — Review remediation + v0.2.0 released
 
-_gate PASS (16 checks) · self-test PASS · doctor 42 checks_
+_gate PASS (16 checks) · self-test PASS · doctor 42 checks · CI green · v0.2.0 public_
 
 - **Done:** Every finding from `docs/reviews/2026-08-11-public-repository-review.md` is
   addressed, one commit per concern. Per-finding answer with commits and re-check commands:
@@ -26,6 +26,13 @@ _gate PASS (16 checks) · self-test PASS · doctor 42 checks_
   - **H6** `--help` exits before any action, unknown options exit 2, four dry-run leaks closed.
   - **M1–M5** quarantine opt-in, backup rotation opt-in, full schema validation, npm scopes
     preserved, overstated claims corrected.
+  - Released **v0.2.0**. Validate and Release workflows both green on a fresh macos runner,
+    including the self-test. Release notes carry the level-1 behaviour change first.
+  - Fixed while cutting the release: `release.yml` read its notes from `[Unreleased]`, which is
+    empty by the time you roll the changelog to tag — a correctly prepared release would have
+    published empty notes. Now reads the tag's section. Both paths verified locally before
+    tagging (59 lines for 0.2.0, 0 lines for a non-existent version, so the fallback is
+    reachable).
 
 - **Decided:** See the eight new entries in `BIBLE.md`. Owner decisions taken this session:
   only macOS 26.5 claimed as tested; `candidate` never auto-installed; `LSQuarantine` opt-in;
@@ -47,6 +54,8 @@ _gate PASS (16 checks) · self-test PASS · doctor 42 checks_
   3. Decide the three open items above.
   4. The two live `doctor.sh` FAILs on the author's machine are still unfixed: the OpenClaw
      LaunchAgent, and `/usr/bin/git` beating brew-git in `PATH`.
+  5. Nothing here has run end to end on a clean machine. That is the single biggest gap and the
+     precondition for ever calling this 1.0.0.
 
 - **Continuity warnings:**
   - Still nothing in this repo has been executed against the owner's machine beyond dry runs.
@@ -58,6 +67,11 @@ _gate PASS (16 checks) · self-test PASS · doctor 42 checks_
     registry or the two will drift apart again.
   - `yq` is now a hard dependency of the gate. A machine without it fails every YAML-based
     check by design — that is the fail-closed behaviour, not a bug.
+  - Rolling the changelog is now part of cutting a release: `release.yml` reads the section
+    matching the tag. Tag without rolling and you get the `[Unreleased]` fallback, which is
+    survivable but not what you want.
+  - `VERSION` must equal the tag or `release.yml` aborts before creating anything. That check is
+    deliberate; do not work around it.
 
 ## 2026-08-11 — Public repository review
 

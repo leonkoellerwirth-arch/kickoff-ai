@@ -61,6 +61,10 @@ want; levels remain cumulative and re-running is safe.
   filesystem writes that ran even under `--dry-run` now go through the dry-run abstraction (H6)
 - npm scopes survive snapshot, profile and diff — `@openai/codex` was becoming `codex` (M4)
 - `db-backup` only reports what is past retention; deleting requires `--prune` (M2)
+- `release.yml` read its notes from the `[Unreleased]` section — the one you empty when rolling
+  the changelog to cut a release — so a correctly prepared release would have shipped with empty
+  notes. It now reads the section matching the tag and falls back to `[Unreleased]`. Found while
+  cutting this release; the published v0.2.0 notes predate this line.
 
 ### Changed
 - CI contains no check logic of its own: `validate.yml` calls `scripts/gate.sh`, which calls

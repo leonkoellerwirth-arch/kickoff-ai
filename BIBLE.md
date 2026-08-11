@@ -51,6 +51,12 @@ The rules that must never quietly break. Each is checked by `scripts/gate.sh` or
 
 Newest first. Each: date · decision · why · (superseded by …).
 
+- **2026-08-11 — Released as 0.2.0, not 1.0.0.** This repo's own MAJOR rule ("level boundaries
+  changed") is met: level 1 stopped installing the full Brewfile. At `0.x` semver already
+  permits a breaking change in a minor bump, and `1.0.0` would signal a stability promise
+  nothing has earned — no part of this has run end to end on a fresh machine. Revisit when a
+  clean-machine run exists.
+
 - **2026-08-11 — Only macOS 26.5 is claimed as tested.** The badge said 26+, `prepare.sh`
   required 15+, and neither was verified. 15 stays as the floor the scripts are written
   against; 26.5 is the one version this was distilled from and run on. Everything else is

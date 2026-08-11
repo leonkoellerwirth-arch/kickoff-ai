@@ -28,7 +28,7 @@ esac
     exit 1
 }
 
-if ! out="$(CI=1 automation/bin/up2date --consistency --offline 2>&1)"; then
+if ! out="$(CI=1 STATE_JSON="$(mktemp)" automation/bin/up2date --consistency --offline 2>&1)"; then
     violation "registry and install lists disagree (INV-8)"
     printf '%s\n' "$out" >&2
     exit 1
