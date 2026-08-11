@@ -6,6 +6,8 @@ Do not open a public GitHub issue for security vulnerabilities.
 
 Report via **GitHub Security Advisories**: go to the [Security tab](https://github.com/leonkoellerwirth-arch/kickoff-ai/security/advisories) of this repo and click "Report a vulnerability". You will receive a response within 7 days.
 
+Private vulnerability reporting is enabled, so that button is visible to anyone — it was disabled until 2026-08-11, which meant this policy pointed at a channel that did not exist.
+
 Include:
 - A description of the vulnerability and what it allows an attacker to do
 - Steps to reproduce (exact commands or config)
@@ -25,6 +27,20 @@ This is not a corporate deployment tool. The intended user is a single developer
 
 ## How to verify before running
 
+If you would rather not execute a moving branch, pin to a release tag and check it yourself:
+
+```bash
+# Pick a tag from https://github.com/leonkoellerwirth-arch/kickoff-ai/releases
+TAG=v0.1.0
+
+curl -fsSL "https://raw.githubusercontent.com/leonkoellerwirth-arch/kickoff-ai/$TAG/prepare.sh" -o prepare.sh
+shasum -a 256 prepare.sh    # compare against the value in the release notes
+less prepare.sh             # read it before running it
+bash prepare.sh --check-only
+```
+
+The `main` one-liner in the README stays the primary path — it is the convenient one, and the residual risk is stated above rather than hidden. The pinned path is for anyone who wants the stronger guarantee.
+
 ```bash
 # Read prepare.sh before executing it:
 curl -fsSL https://raw.githubusercontent.com/leonkoellerwirth-arch/kickoff-ai/main/prepare.sh | less
@@ -43,8 +59,9 @@ cd ~/dev/kickoff-ai && ./bootstrap.sh --dry-run
 
 - **Nothing destructive by default.** Scripts that delete files or uninstall tools require an explicit `--apply` flag or interactive confirmation. The default is always a dry run or a read-only check.
 - **`RunAtLoad=false` on all launchd jobs.** Jobs in `automation/launchd/` do not start at login unless you explicitly enable them.
-- **No secrets in the repository.** API keys, tokens, SSH keys, and passwords are excluded from the repo by `.gitignore`. The sanitization scan in `validate.yml` blocks PRs that accidentally include them.
-- **Sanitization CI.** Every push runs a scan against `.github/sanitize-denylist.txt`. The deny list covers common secret patterns (tokens, private paths, email addresses).
+- **No secrets in the repository.** API keys, tokens, SSH keys, and passwords are excluded from the repo by `.gitignore`. `scripts/checks/sanitize.sh` blocks PRs that accidentally include them.
+- **Sanitization CI.** Every push scans **every tracked text file** — the list comes from git's own binary detection, not from a file-extension allowlist — against `.github/sanitize-denylist.txt`. Check the scope with `./scripts/checks/sanitize.sh --list`. gitleaks runs over the full history in the same job.
+- **One implementation, not two.** CI contains no check logic of its own: `validate.yml` calls `scripts/gate.sh`, which calls `scripts/checks/*`. Running `./scripts/gate.sh` locally runs exactly what CI runs. A check that cannot run (missing tool) fails the gate rather than being skipped, and `scripts/checks/self-test.sh` proves the gate still blocks a deliberately broken tree.
 - **`scripts/90-cleanup-legacy.sh` is opt-in.** The legacy cleanup script, which removes software, is never called automatically by `bootstrap.sh`. It must be invoked explicitly.
 
 ## Supported versions

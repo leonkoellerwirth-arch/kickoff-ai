@@ -51,6 +51,33 @@ The rules that must never quietly break. Each is checked by `scripts/gate.sh` or
 
 Newest first. Each: date · decision · why · (superseded by …).
 
+- **2026-08-11 — Only macOS 26.5 is claimed as tested.** The badge said 26+, `prepare.sh`
+  required 15+, and neither was verified. 15 stays as the floor the scripts are written
+  against; 26.5 is the one version this was distilled from and run on. Everything else is
+  explicitly untested rather than implicitly supported.
+- **2026-08-11 — `candidate` is never installed by a default run.** INV-1 already said
+  adoption is a human step; module 04 installed six level-3 candidates on every level. The
+  registry now gates installs on `status=active` and `level<=selected`.
+- **2026-08-11 — Level 1 gets its own Brewfile.** It used the full `Brewfile`, pulling in 25
+  packages the README places at level 2 or 3. `Brewfile.level1` is derived from the registry.
+  Where registry and README disagreed on docker/ollama/gemini-cli, the README won — because
+  `bootstrap.sh` already gated the AI stack that way, so the code agreed with the README.
+- **2026-08-11 — Download quarantine stays on by default.** `LSQuarantine=false` is a security
+  control, not a UI preference. Now behind `--relax-download-quarantine`.
+- **2026-08-11 — The `main` one-liner stays the primary install path.** Convenience wins for
+  the documented audience, and SECURITY.md states the residual risk honestly. A pinned
+  release-tag path with a checksum is documented alongside it for anyone who wants it.
+- **2026-08-11 — `main` is protected by required checks only, admins exempt.** Validate must
+  be green before a merge. No review requirement: a second reviewer does not exist on a
+  single-maintainer repo, and a rule nobody can satisfy gets disabled rather than followed.
+  `enforce_admins: false` deliberately — GitHub's required checks block direct pushes too,
+  and locking the sole maintainer out of their own default branch is not a security gain.
+- **2026-08-11 — CI contains no check logic of its own.** `validate.yml` calls
+  `scripts/gate.sh` calls `scripts/checks/*`. INV-7 asked for parity; duplicated
+  implementations were parity by copy, which is how the two drifted apart in the first place.
+- **2026-08-11 — A check that cannot run has not passed.** Missing tools are exit 2 and fail
+  the gate. `yq` became a declared dependency as a consequence; PyYAML is gone.
+
 - **2026-08-11 — Adopted the `base` paved road.** `base sync` added the backbone scripts, session
   skills, `.editorconfig`, pre-commit config and CODEOWNERS. `scripts/gate.sh` was extended with
   a shell surface, because base's gate auto-detects only python and web repos and would have
@@ -81,6 +108,18 @@ Newest first. Each: date · decision · why · (superseded by …).
 
 ## Open decisions
 
+- **Language of `docs/reviews/`.** The 2026-08-11 review is German while the repo language is
+  English. Kept verbatim rather than translated, because rewording evidence quotes risks
+  distorting them. Either translate it, move it under `docs/de/`, or record reviews as an
+  explicit exception to the English-first decision.
+- **Dry-run purity is not statically enforced.** Four writes outside the `run` abstraction were
+  found and fixed by hand. Proving the rest needs a temp-HOME filesystem diff with brew, npm
+  and ssh-keygen running in CI. `scripts/checks/cli-contract.sh` covers `--help` and unknown
+  options only, and says so.
+- **Vaultwarden template uses `:latest` and open registration.** `templates/vaultwarden/
+  docker-compose.yml` pins no image digest and ships `SIGNUPS_ALLOWED=true`. Deliberate for a
+  local-first quickstart, or a supply-chain path that should be pinned and closed after first
+  use? Not decided.
 - **Social preview image.** `local/github-metadata.md` proposes a terminal screenshot of
   `bootstrap.sh --list-levels`. Can only be set through the GitHub web UI.
 - **Website field** in the repo About panel is empty. Candidates: the owner's site, or
