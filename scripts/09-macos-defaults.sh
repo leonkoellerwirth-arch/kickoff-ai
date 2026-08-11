@@ -7,6 +7,12 @@
 # Changes:  macOS user preferences via 'defaults write'
 # Requires: macOS, no sudo needed (all user-domain settings)
 # Usage:    ./scripts/09-macos-defaults.sh [--dry-run] [--yes]
+#             [--relax-download-quarantine]
+#
+#           --relax-download-quarantine disables the macOS download quarantine
+#           dialog (LSQuarantine). It is OFF by default: that dialog is a
+#           security control, not a UI preference, and nothing in "developer
+#           defaults" leads a first-time user to expect it to be switched off.
 #
 # Note:     Many settings only take full effect after logout or restart.
 #           Some require restarting affected processes (Finder, Dock).
@@ -16,10 +22,12 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib.sh"
 
+RELAX_QUARANTINE=0
 for arg in "$@"; do
     case "$arg" in
         --dry-run) DRY_RUN=1; export DRY_RUN ;;
         --yes)     YES_MODE=1; export YES_MODE ;;
+        --relax-download-quarantine) RELAX_QUARANTINE=1 ;;
     esac
 done
 
@@ -157,9 +165,20 @@ ok "  TextEdit: plain-text mode, UTF-8"
 # =============================================================================
 info "Security settings..."
 
-# No automatic app launch after download (Safe Mode remains active)
-df_write com.apple.LaunchServices LSQuarantine -bool false
-ok "  Quarantine dialog for downloads disabled"
+# Download quarantine. Opt-in only.
+#
+# LSQuarantine=false suppresses the "downloaded from the internet, are you
+# sure?" dialog. That is a security control being switched off, so it is not
+# part of the default set — a level-1 run must not silently weaken the machine
+# it is setting up. Gatekeeper and XProtect are unaffected either way; this
+# specific prompt is what changes.
+if [ "$RELAX_QUARANTINE" = "1" ]; then
+    df_write com.apple.LaunchServices LSQuarantine -bool false
+    warn "  Download quarantine dialog DISABLED (--relax-download-quarantine)"
+    info "  Undo: defaults write com.apple.LaunchServices LSQuarantine -bool true"
+else
+    info "  Download quarantine left enabled (--relax-download-quarantine to disable)"
+fi
 
 # =============================================================================
 # Menu bar

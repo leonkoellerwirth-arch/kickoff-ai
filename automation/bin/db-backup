@@ -13,12 +13,14 @@
 #             Credentials are NOT stored in the script — read from container
 #             env variables or `bw` (Bitwarden CLI), otherwise prompted
 #             interactively.
-# Changes:    Writes new backup files to ~/backups/db/. Deletes old backups
-#             (rotation). No container changes.
-# Usage:      db-backup [--dry-run] [--keep-days N] [--container <name>] [--help]
+# Changes:    Writes new backup files to ~/backups/db/. Deletes nothing unless
+#             --prune is given. No container changes.
+# Usage:      db-backup [--dry-run] [--keep-days N] [--container <name>]
+#                       [--prune] [--help]
 # =============================================================================
 set -euo pipefail
 
+PRUNE=0
 AUTOMATION_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$AUTOMATION_DIR/lib-automation.sh"
 
@@ -31,18 +33,23 @@ TARGET_CONTAINER=""
 for arg in "$@"; do
     case "$arg" in
         --dry-run)     DRY_RUN=1 ;;
+        --prune)       PRUNE=1 ;;
         --keep-days)   KEEP_NEXT=1 ;;
         --container)   CONTAINER_NEXT=1 ;;
         --help|-h)
             cat >&2 <<'EOF'
-Usage: db-backup [--dry-run] [--keep-days N] [--container <name>] [--help]
+Usage: db-backup [--dry-run] [--keep-days N] [--container <name>] [--prune] [--help]
 
   Creates dumps from running MySQL/MariaDB/PostgreSQL containers.
   Backups: ~/backups/db/<container>/<date>.sql.gz
 
 Options:
   --dry-run            Show what would be backed up without dumping
-  --keep-days N        Keep backups for N days (default: 14)
+  --prune              Actually delete backups older than --keep-days.
+                       Without it, old backups are only REPORTED. INV-2:
+                       every command that can delete requires an explicit
+                       opt-in, and backup files have no backup of their own.
+  --keep-days N        Retention window in days (default: 14)
   --container <name>   Back up only this container
   --help               This help
 
@@ -59,7 +66,8 @@ Examples:
   db-backup                      # Back up all running DB containers
   db-backup --dry-run            # Show what would be backed up
   db-backup --container my-mysql # Only this container
-  db-backup --keep-days 30       # Keep 30 days
+  db-backup --keep-days 30       # Report anything older than 30 days
+  db-backup --prune              # Actually delete what is past retention
 EOF
             exit 0
             ;;
@@ -106,7 +114,9 @@ get_credential() {
 
     # 2. Bitwarden CLI — if BW_SESSION is set and bw is available
     if [ -n "$op_path" ] && have bw && [ -n "${BW_SESSION:-}" ]; then
-        cred=$(bw get password "$op_path" --session "$BW_SESSION" 2>/dev/null || true)
+        # BW_SESSION is inherited from the environment, never passed as an
+        # argument — argv is world-readable via ps (same fix as env-run).
+        cred=$(BW_SESSION="${BW_SESSION:-}" bw get password "$op_path" 2>/dev/null || true)
         if [ -n "$cred" ]; then
             printf '%s' "$cred"
             return 0
@@ -282,14 +292,24 @@ done < <(printf '%s\n' "$containers")
 # =============================================================================
 # Rotation: delete old backups
 # =============================================================================
+# Rotation only reports unless --prune is given. INV-2 says every command that
+# can delete requires an explicit opt-in, and this one deletes backups — the
+# files that exist precisely because everything else can be lost.
 if [ "$DRY_RUN" = "0" ] && [ -d "$BACKUP_BASE" ]; then
-    step "Rotation: deleting backups older than $KEEP_DAYS days"
-    deleted=$(find "$BACKUP_BASE" -name "*.sql.gz" -mtime "+$KEEP_DAYS" 2>/dev/null | wc -l | tr -d ' ')
-    if [ "$deleted" -gt 0 ]; then
-        find "$BACKUP_BASE" -name "*.sql.gz" -mtime "+$KEEP_DAYS" -delete 2>/dev/null || true
-        info "$deleted old backup file(s) deleted."
-    else
+    old_files=$(find "$BACKUP_BASE" -name "*.sql.gz" -mtime "+$KEEP_DAYS" 2>/dev/null || true)
+    old_count=$(printf '%s' "$old_files" | grep -c . || true)
+
+    if [ "${old_count:-0}" -eq 0 ]; then
         info "No backups older than $KEEP_DAYS days."
+    elif [ "$PRUNE" = "1" ]; then
+        step "Rotation: deleting $old_count backup(s) older than $KEEP_DAYS days"
+        printf '%s\n' "$old_files" | sed 's/^/    /' >&2
+        find "$BACKUP_BASE" -name "*.sql.gz" -mtime "+$KEEP_DAYS" -delete 2>/dev/null || true
+        info "$old_count old backup file(s) deleted."
+    else
+        step "Rotation: $old_count backup(s) past retention ($KEEP_DAYS days)"
+        printf '%s\n' "$old_files" | sed 's/^/    /' >&2
+        info "Nothing deleted. Re-run with --prune to remove them."
     fi
 fi
 

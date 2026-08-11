@@ -163,8 +163,13 @@ _DENO_VER=$(deno --version 2>/dev/null | head -1 | awk '{print $2}' || echo "")
 # npm globals: package names without version suffix from parseable format
 _NPM_GLOBALS=""
 if have npm; then
+    # Keep the @scope segment: --parseable emits a filesystem path, so a
+    # scoped package ends in .../node_modules/@scope/pkg and taking only the
+    # last segment turns "@openai/codex" into "codex" — a name that does not
+    # exist on the registry, so the generated install command fails. Several of
+    # the AI CLIs this repo installs are scoped.
     _NPM_GLOBALS=$(npm list -g --depth=0 --parseable 2>/dev/null \
-        | awk -F/ 'NR>1{print $NF}' | sort || echo "")
+        | awk -F/ 'NR>1{ if ($(NF-1) ~ /^@/) print $(NF-1) "/" $NF; else print $NF }' | sort || echo "")
     info "npm globals: $(printf "%s" "$_NPM_GLOBALS" | wc -l | tr -d ' ') packages"
 fi
 

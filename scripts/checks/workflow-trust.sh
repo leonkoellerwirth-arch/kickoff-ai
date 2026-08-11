@@ -38,6 +38,13 @@ esac
 require yq
 require jq
 
+# The repo owner is read from the remote rather than hard-coded: an account
+# name in a tracked file is exactly what the sanitization scan blocks, and
+# hard-coding it would also break for anyone who forks this.
+OWNER="$(git config --get remote.origin.url 2>/dev/null |
+    sed -E 's#^.*[:/]([^/]+)/[^/]+(\.git)?$#\1#')"
+[ -n "$OWNER" ] || OWNER="__no_owner__"
+
 fail=0
 json="$(mktemp)"
 trap 'rm -f "$json"' EXIT
@@ -74,7 +81,7 @@ for wf in .github/workflows/*.yml; do
         n_uses=$((n_uses + 1))
         case "$use" in
             ./*) continue ;;                          # local reusable workflow
-            leonkoellerwirth-arch/*) continue ;;      # owned by this account
+            "$OWNER"/*) continue ;;                   # owned by this repo's account
         esac
         ref="${use##*@}"
         if ! printf '%s' "$ref" | grep -qE '^[0-9a-f]{40}$'; then
