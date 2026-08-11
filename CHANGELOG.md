@@ -61,6 +61,10 @@ want; levels remain cumulative and re-running is safe.
   filesystem writes that ran even under `--dry-run` now go through the dry-run abstraction (H6)
 - npm scopes survive snapshot, profile and diff — `@openai/codex` was becoming `codex` (M4)
 - `db-backup` only reports what is past retention; deleting requires `--prune` (M2)
+- The gate itself rewrote the tracked `manifests/STATE.json` on every run, because two of its
+  checks invoke `up2date`. It promised to change nothing and dirtied the very tree it was
+  judging. `STATE_JSON` is now overridable and both checks redirect it; `self-test.sh` compares
+  the tree before and after and fails if the gate touched anything
 - `release.yml` read its notes from the `[Unreleased]` section — the one you empty when rolling
   the changelog to cut a release — so a correctly prepared release would have shipped with empty
   notes. It now reads the section matching the tag and falls back to `[Unreleased]`. Found while
