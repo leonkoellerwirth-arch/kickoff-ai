@@ -13,6 +13,9 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # release.yml calls this workflow before cutting a release. Without
+  # workflow_call the reusable-workflow reference fails to start at all.
+  workflow_call:
 
 permissions:
   contents: read
