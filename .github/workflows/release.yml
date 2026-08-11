@@ -45,7 +45,7 @@ jobs:
       # 1. Checkout
       # -----------------------------------------------------------------------
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
 
@@ -76,33 +76,45 @@ jobs:
       # -----------------------------------------------------------------------
       # 3. Extract release notes from CHANGELOG.md
       # -----------------------------------------------------------------------
+      # The notes go to a FILE and never through a step output.
+      #
+      # Two separate injection paths existed here, both driven by ordinary
+      # CHANGELOG content that any contributor can propose:
+      #
+      #   1. The next step interpolated ${{ steps.notes.outputs.notes }} inside
+      #      a double-quoted shell argument, in a job holding contents: write.
+      #      A quote or a $(...) in the changelog became shell syntax before the
+      #      script ran.
+      #   2. The heredoc delimiter written into $GITHUB_OUTPUT was the fixed
+      #      string EOFNOTES. A changelog line containing EOFNOTES closes the
+      #      block early and lets the rest of the section set arbitrary step
+      #      outputs.
+      #
+      # A file has neither property: content is copied, never evaluated.
       - name: Extract release notes from CHANGELOG.md
-        id: notes
         run: |
+          set -euo pipefail
+
+          notes_file=/tmp/release-notes.md
+
           if [ ! -f CHANGELOG.md ]; then
             echo "No CHANGELOG.md found — using empty release notes"
-            echo "notes=" >> "$GITHUB_OUTPUT"
+            echo "_No changelog available._" > "$notes_file"
             exit 0
           fi
 
-          # Extract the [Unreleased] section
-          # From ## [Unreleased] to the next ## [
-          notes=$(awk '
+          # Extract the [Unreleased] section: from ## [Unreleased] to the next ## [
+          awk '
             /^## \[Unreleased\]/ { in_section=1; next }
             in_section && /^## \[/ { exit }
             in_section { print }
-          ' CHANGELOG.md | sed '/^[[:space:]]*$/d' | head -200)
+          ' CHANGELOG.md | sed '/^[[:space:]]*$/d' | head -200 > "$notes_file"
 
-          if [ -z "$notes" ]; then
-            notes="No entries in the [Unreleased] section."
+          if [ ! -s "$notes_file" ]; then
+            echo "No entries in the [Unreleased] section." > "$notes_file"
           fi
 
-          # Escape multi-line output for GitHub Actions
-          {
-            echo "notes<<EOFNOTES"
-            echo "$notes"
-            echo "EOFNOTES"
-          } >> "$GITHUB_OUTPUT"
+          echo "Release notes prepared ($(wc -l < "$notes_file" | tr -d ' ') lines)"
 
       # -----------------------------------------------------------------------
       # 4. Create GitHub release
@@ -110,21 +122,25 @@ jobs:
       - name: Create GitHub release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Through env:, not interpolated into the script body. The tag is
+          # attacker-influenced in the same way the changelog was — anyone who
+          # can push a tag chooses this string.
+          TAG: ${{ steps.version.outputs.tag }}
         run: |
-          tag="${{ steps.version.outputs.tag }}"
-          version="${{ steps.version.outputs.version }}"
+          set -euo pipefail
 
-          # Check whether release already exists
-          if gh release view "$tag" >/dev/null 2>&1; then
-            echo "Release $tag already exists — updating"
-            gh release edit "$tag" \
-              --title "kickoff-ai $tag" \
-              --notes "${{ steps.notes.outputs.notes }}"
+          notes_file=/tmp/release-notes.md
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists — updating"
+            gh release edit "$TAG" \
+              --title "kickoff-ai $TAG" \
+              --notes-file "$notes_file"
           else
-            gh release create "$tag" \
-              --title "kickoff-ai $tag" \
-              --notes "${{ steps.notes.outputs.notes }}" \
+            gh release create "$TAG" \
+              --title "kickoff-ai $TAG" \
+              --notes-file "$notes_file" \
               --verify-tag
           fi
 
-          echo "Release $tag created/updated"
+          echo "Release $TAG created/updated"
