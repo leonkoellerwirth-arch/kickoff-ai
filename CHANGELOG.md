@@ -15,6 +15,10 @@ Semantics for this repo:
 ## [Unreleased]
 
 ### Added
+- Paved-road adoption via `base sync`: backbone scripts (`gate.sh`, `secure.sh`, `budget.sh`, `session-snapshot.sh`, `state.sh`, `context.sh`), session skills under `.claude/skills/`, `.editorconfig`, `.pre-commit-config.yaml`, `.github/CODEOWNERS`
+- `BIBLE.md` — repo invariants (INV-1 … INV-9) and decision register
+- `HANDOFF.md` — session log, newest entry first
+- `scripts/gate.sh` shell surface — bash syntax, shellcheck, plist lint, YAML parsing, workflow run-block syntax, and registry consistency; mirrors the CI so local and CI cannot drift
 - `prepare.sh` — zero-dependency entry point for brand-new machines; checks readiness, installs CLT, clones repo, hands off to `bootstrap.sh`; supports `--check-only`, `--profile`, `--no-bootstrap`
 - `status-quo.sh` — read-only export of current machine state to `local/status-quo/<date>/`; produces `profile.json`, `repos.md`, `STATUS-QUO.md`, `manuell.md`
 - `automation/bin/migration-diff` — compares `profile.json` from old machine with current machine state; reports missing, new, version-different, and intentionally retired tools; exits 1 when gaps remain
@@ -22,7 +26,6 @@ Semantics for this repo:
 - English documentation layer: `docs/00-ZERO-TO-HERO.md` through `docs/09-MIGRATION.md`
 - German documentation moved to `docs/de/`
 - `QUICKSTART.md` (English) with `prepare.sh` one-liner for bare machines
-- `QUICKSTART.de.md` (German equivalent)
 - `README.md` rewritten as English pitch
 - `README.de.md` — German equivalent of the new README
 - `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md` — community files
