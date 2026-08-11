@@ -3,6 +3,62 @@
 Session handoffs, **newest entry first**. Written by `/session-stop` (via
 `scripts/session-snapshot.sh`). Read the top entry at `/session-start`.
 
+## 2026-08-11 — Review remediation (all 15 findings)
+
+_gate PASS (16 checks) · self-test PASS · doctor 42 checks_
+
+- **Done:** Every finding from `docs/reviews/2026-08-11-public-repository-review.md` is
+  addressed, one commit per concern. Per-finding answer with commits and re-check commands:
+  `docs/reviews/2026-08-11-response.md`.
+  - **K1** identity now goes to `~/.gitconfig.local`; `git config --global` appears nowhere in
+    the executable surface. doctor check 31 + `gitconfig-isolation.sh` guard it.
+  - **K2** `seq 0 -1` counts down on BSD — that was the zero-findings crash. Cask versions were
+    unreachable code. Exit 2 now means "could not complete" and never "clean".
+  - **H7** the gate died before `gitleaks`, the customer-name scan and the verdict on any
+    machine without PyYAML. Rebuilt as `scripts/checks/*` run as subprocesses; CI calls the
+    same scripts. `self-test.sh` proves it blocks.
+  - **H1/H9** `timeout` does not exist on stock macOS, so every scan silently did nothing and
+    reported ok. `BW_SESSION` no longer passed in argv (also fixed in `db-backup`).
+  - **H2/H3/H10** actions pinned to SHAs, release notes via `--notes-file`, private
+    vulnerability reporting enabled, `main` protected by required checks.
+  - **H4/H5** levels gate on registry status and level; bootstrap exits 0/1/2 and no longer
+    claims "complete" before doctor has run.
+  - **H6** `--help` exits before any action, unknown options exit 2, four dry-run leaks closed.
+  - **M1–M5** quarantine opt-in, backup rotation opt-in, full schema validation, npm scopes
+    preserved, overstated claims corrected.
+
+- **Decided:** See the eight new entries in `BIBLE.md`. Owner decisions taken this session:
+  only macOS 26.5 claimed as tested; `candidate` never auto-installed; `LSQuarantine` opt-in;
+  `main` one-liner stays primary with a pinned path documented alongside; `main` protected by
+  required checks with `enforce_admins: false`.
+
+- **Open:**
+  - Dry-run purity is not statically enforced — four leaks fixed by hand, the rest needs a
+    temp-HOME filesystem diff in CI.
+  - Vaultwarden template still `:latest` with open registration — needs a decision.
+  - `docs/reviews/` is German in an English-first repo — translate, move, or make it an
+    explicit exception.
+  - The 12 `candidate` registry entries still need adoption decisions (carried over).
+
+- **Next:**
+  1. `./scripts/gate.sh` must print `GATE: PASS`, then `./scripts/checks/self-test.sh`.
+  2. Watch the first CI run on the protected branch — the required check is named
+     "Quality gate"; if the context name does not match, merges will hang.
+  3. Decide the three open items above.
+  4. The two live `doctor.sh` FAILs on the author's machine are still unfixed: the OpenClaw
+     LaunchAgent, and `/usr/bin/git` beating brew-git in `PATH`.
+
+- **Continuity warnings:**
+  - Still nothing in this repo has been executed against the owner's machine beyond dry runs.
+  - `main` now has branch protection. Required status checks block direct pushes as well as
+    merges; `enforce_admins: false` is what keeps the maintainer able to push. Do not turn
+    that on without switching to a PR workflow first.
+  - The registry levels for docker/ollama/gemini-cli were changed 1 → 2 to match the README.
+    If the README level table is ever revised, `Brewfile.level1` must be regenerated from the
+    registry or the two will drift apart again.
+  - `yq` is now a hard dependency of the gate. A machine without it fails every YAML-based
+    check by design — that is the fail-closed behaviour, not a bug.
+
 ## 2026-08-11 — Public repository review
 
 - **Done:** An independent high-rigor review of the public GitHub repository is
