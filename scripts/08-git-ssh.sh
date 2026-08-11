@@ -23,12 +23,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 source "$SCRIPT_DIR/lib.sh"
 
-for arg in "$@"; do
-    case "$arg" in
-        --dry-run) DRY_RUN=1; export DRY_RUN ;;
-        --yes)     YES_MODE=1; export YES_MODE ;;
-    esac
-done
+parse_module_args "${BASH_SOURCE[0]}" "$@"
 
 step "08 · Git, SSH & secrets tools"
 
@@ -222,7 +217,7 @@ GITHUB_MARKER="# kickoff-ai: github.com"
 append_once "$SSH_CONFIG" "$GITHUB_MARKER" "# kickoff-ai: github.com
 $GITHUB_SSH_BLOCK"
 
-chmod 600 "$SSH_CONFIG" 2>/dev/null || true
+run_chmod 600 "$SSH_CONFIG" 2>/dev/null || true
 ok "$HOME/.ssh/config updated"
 
 # Add key to agent
@@ -266,7 +261,7 @@ info "Setting up SSH commit signing..."
 ALLOWED_SIGNERS="$HOME/.config/git/allowed_signers"
 
 if [ -f "${KEY_PATH}.pub" ]; then
-    mkdir -p "$HOME/.config/git"
+    run_mkdir "$HOME/.config/git"
 
     if [ -n "$GIT_EMAIL" ]; then
         SIGNER_LINE="${GIT_EMAIL} $(cat "${KEY_PATH}.pub")"

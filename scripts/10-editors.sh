@@ -15,12 +15,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 source "$SCRIPT_DIR/lib.sh"
 
-for arg in "$@"; do
-    case "$arg" in
-        --dry-run) DRY_RUN=1; export DRY_RUN ;;
-        --yes)     YES_MODE=1; export YES_MODE ;;
-    esac
-done
+parse_module_args "${BASH_SOURCE[0]}" "$@"
 
 step "10 · Editors"
 

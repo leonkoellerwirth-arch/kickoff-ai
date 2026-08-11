@@ -58,6 +58,7 @@ workflow-trust.sh
 registry-schema.sh
 registry-consistency.sh
 currency-contract.sh
+cli-contract.sh
 gitconfig-isolation.sh
 markdown-links.sh
 sanitize.sh

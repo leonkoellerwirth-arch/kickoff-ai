@@ -22,13 +22,7 @@ FULL_MODE="${FULL_MODE:-0}"
 # OVERRIDE_BREWFILE: if set, this Brewfile path is used instead of Brewfile
 OVERRIDE_BREWFILE="${OVERRIDE_BREWFILE:-}"
 
-for arg in "$@"; do
-    case "$arg" in
-        --dry-run) DRY_RUN=1; export DRY_RUN ;;
-        --yes)     YES_MODE=1; export YES_MODE ;;
-        --full)    FULL_MODE=1 ;;
-    esac
-done
+parse_module_args "${BASH_SOURCE[0]}" "$@"
 
 step "02 · Homebrew"
 

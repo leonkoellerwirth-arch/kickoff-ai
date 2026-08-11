@@ -12,12 +12,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib.sh"
 
-for arg in "$@"; do
-    case "$arg" in
-        --dry-run) DRY_RUN=1; export DRY_RUN ;;
-        --yes)     YES_MODE=1; export YES_MODE ;;
-    esac
-done
+parse_module_args "${BASH_SOURCE[0]}" "$@"
 
 step "04 · Node stack"
 
@@ -86,7 +81,7 @@ fi
 # Configure PNPM_HOME
 PNPM_HOME="$HOME/Library/pnpm"
 if [ ! -d "$PNPM_HOME" ]; then
-    mkdir -p "$PNPM_HOME"
+    run_mkdir "$PNPM_HOME"
 fi
 
 # =============================================================================
