@@ -76,7 +76,7 @@ else
         info "If you don't have a base repo yet, you can create one later:"
         info "  git init ~/dev/base && cd ~/dev/base"
         printf "%s  Git URL for ~/dev/base (leave blank to skip): %s" "$_YELLOW" "$_RESET" >&2
-        read -r REPO_URL </dev/tty
+        read -r REPO_URL </dev/tty 2>/dev/null || REPO_URL=""
         REPO_URL="${REPO_URL:-}"
     fi
 

@@ -97,7 +97,7 @@ CURRENT_EMAIL=$(git_read_config user.email)
 
 if [ -n "${GIT_AUTHOR_NAME:-}" ]; then
     GIT_NAME="$GIT_AUTHOR_NAME"
-elif [ "$YES_MODE" = "1" ]; then
+elif [ "$YES_MODE" = "1" ] || [ "$DRY_RUN" = "1" ]; then
     if [ -n "$CURRENT_NAME" ]; then
         GIT_NAME="$CURRENT_NAME"
         info "Keeping existing git user.name: $GIT_NAME"
@@ -107,13 +107,13 @@ elif [ "$YES_MODE" = "1" ]; then
     fi
 else
     printf "%s  Git user.name [%s]: %s" "$_YELLOW" "${CURRENT_NAME:-empty}" "$_RESET" >&2
-    read -r GIT_NAME </dev/tty
+    read -r GIT_NAME </dev/tty 2>/dev/null || GIT_NAME=""
     GIT_NAME="${GIT_NAME:-$CURRENT_NAME}"
 fi
 
 if [ -n "${GIT_AUTHOR_EMAIL:-}" ]; then
     GIT_EMAIL="$GIT_AUTHOR_EMAIL"
-elif [ "$YES_MODE" = "1" ]; then
+elif [ "$YES_MODE" = "1" ] || [ "$DRY_RUN" = "1" ]; then
     if [ -n "$CURRENT_EMAIL" ]; then
         GIT_EMAIL="$CURRENT_EMAIL"
         info "Keeping existing git user.email: $GIT_EMAIL"
@@ -123,7 +123,7 @@ elif [ "$YES_MODE" = "1" ]; then
     fi
 else
     printf "%s  Git user.email [%s]: %s" "$_YELLOW" "${CURRENT_EMAIL:-empty}" "$_RESET" >&2
-    read -r GIT_EMAIL </dev/tty
+    read -r GIT_EMAIL </dev/tty 2>/dev/null || GIT_EMAIL=""
     GIT_EMAIL="${GIT_EMAIL:-$CURRENT_EMAIL}"
 fi
 

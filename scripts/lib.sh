@@ -106,9 +106,23 @@ confirm() {
         info "$prompt [auto: yes]"
         return 0
     fi
+    # A dry run must never ask. It is a preview: the question is about something
+    # that will not happen, and answering it changes nothing. Asking anyway makes
+    # --dry-run unusable anywhere without a terminal — the Control Room's preview
+    # button and any agent driving this repo both pipe stdout and have no tty, so
+    # the prompt used to abort the whole run instead of previewing it.
+    if [ "$DRY_RUN" = "1" ]; then
+        info "$prompt [dry-run: showing what a yes would do]"
+        return 0
+    fi
     printf "%s%s  %s [y/N] %s" "$_YELLOW" "?" "$prompt" "$_RESET" >&2
     local answer
-    read -r answer </dev/tty
+    # No terminal is a "no", not a crash. Same guard prepare.sh already uses.
+    if ! read -r answer </dev/tty 2>/dev/null; then
+        printf '\n' >&2
+        warn "No terminal available to ask — assuming no. Use --yes to answer in advance."
+        return 1
+    fi
     case "$answer" in
         [jJyY]|[jJ][aA]|[yY][eE][sS]) return 0 ;;
         *) return 1 ;;
