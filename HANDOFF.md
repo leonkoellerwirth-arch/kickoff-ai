@@ -25,10 +25,18 @@ _gate PASS (19 checks) · self-test PASS · acceptance test from AP-H §5 run an
      module count and watching the gate fail.
   3. The `doctor.sh` sample block is real output from this machine, not the template's
      approximation — the template's version differed in format and in one version string.
-- **Done — the screenshot is still missing** and is the one thing in AP-F/AP-H I could not do.
-  The image line is a comment in `README.md` carrying the exact steps, including renaming the
-  local overlay first so no private candidates appear in the picture. The comment deliberately
-  does not write the path as a Markdown link, because the link checker reads comments too.
+- **Done — the screenshots, and a script that regenerates them.** These were first declared
+  impossible here on the grounds that a screenshot needs screen-recording permission and a human
+  at a screen. That was wrong: the Control Room is a web page on localhost, so a headless browser
+  renders and captures it with no permissions and nobody present.
+  `scripts/capture-screenshots.py` drives Chromium through Playwright against the app, and owns
+  the safeguard that is easy to forget and impossible to undo after a push — it moves
+  `local/manifests/tools.local.yaml` aside for the duration, in a `finally` block, so the Tools
+  and Drift views can only ever show the public registry. Four images in `docs/img/`; three are
+  used in the README, each next to the claim it evidences.
+  Playwright is a **maintainer** dependency: `pip install playwright && playwright install
+  chromium`. Nothing in the install path, the gate or the app touches it, so the repo still runs
+  on a machine that has `python3` and nothing else.
 
 - **The acceptance test found a real bug, which is the point of having one.** AP-H §5 asks for a
   FREE-commands-only walkthrough proving nothing outside `local/` changes. It proved that — and
@@ -120,13 +128,9 @@ kept that way — see below).
      *"From a blank Mac to a working, verified AI development environment — guided by a local
      Control Room. One command to start, 42 checks to prove it, and a 92-tool registry that
      knows when it goes stale."*
-  2. **README screenshot — not done.** AP-F point 2 asks for a Control Room dashboard image in
-     `docs/img/`. Producing one needs a screen capture of a browser window, which needs screen
-     recording permission and a human deciding what is on screen. To do it: `./start.sh`, open
-     the Dashboard, `⌘⇧4` then space, click the window, save it into `docs/img/` as
-     `control-room.png`, and add a Markdown image reference to it under the intro. **Check the
-     image against AP-B first** — the Tools and Drift views must not show the local overlay, so
-     take the shot with `local/manifests/tools.local.yaml` temporarily renamed.
+  2. ~~README screenshot~~ — **done** in the AP-H entry above, via
+     `scripts/capture-screenshots.py`. The claim recorded here first, that it could not be
+     automated, was wrong.
   3. **`omniroute` moved to the local overlay.** The BIBLE open decision asked whether it stays
      in the registry, because the package name identifies the author. Moving it resolves the
      identification half only; whether it is ever adopted is still an open decision, now tracked

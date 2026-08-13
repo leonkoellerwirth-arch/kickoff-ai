@@ -12,15 +12,7 @@ Control Room in your browser. One command to start, 42 checks to prove it, and a
 registry that reports its own drift. At the end, you don't read that it worked.
 You watch an agent do something on your machine.
 
-<!-- TODO: the Control Room screenshot goes here, and this comment goes away.
-     1. ./start.sh and open the Dashboard.
-     2. Rename local/manifests/tools.local.yaml first, so the Tools and Drift views show the
-        public registry only and no private candidates end up in the image.
-     3. Screenshot the window and save it as docs/img/control-room.png.
-     4. Replace this comment with a Markdown image reference to that file, captioned
-        "The Control Room — dashboard view".
-     The link checker scans comments too, so the path above is deliberately not written as a
-     Markdown link — a dead link here would fail the gate. -->
+![The Control Room — dashboard view](docs/img/control-room.png)
 
 ---
 
@@ -30,8 +22,13 @@ You watch an agent do something on your machine.
 
 Nothing in this repository installs, removes, or retires anything on its own. Every check is
 read-only. Every change is previewed before it runs, runs visibly in Terminal, and is verified
-after. The Control Room shows two badges and means them: `changes nothing` and
+after. The Control Room shows two badges and means them: `changes nothing on this Mac` and
 `changes your Mac` — and the second one always waits for you.
+
+![The Guide — every step labelled with what it runs and whether it changes anything](docs/img/control-room-guide.png)
+
+Every step names the command it runs, so nothing is hidden behind a button, and the same three
+classes govern an agent driving this repo — see the [Operator Playbook](docs/12-OPERATOR-PLAYBOOK.md).
 
 ---
 
@@ -145,9 +142,12 @@ automation/bin/         14 commands — drift checks, sunset lifecycle, hygiene,
 docs/                   Zero-to-hero guide, decisions (ADR), governance pattern, playbooks
 ```
 
+![The Tools view — the public registry, searchable, with a reason per entry](docs/img/control-room-tools.png)
+
 Machine-specific state never lives in the public registry: what a scan finds on *a* machine
 goes to `local/manifests/tools.local.yaml`, which is gitignored by design. The public manifest
-is a reference; your machine's state is yours. A CI guard keeps it that way.
+is a reference; your machine's state is yours. A CI guard keeps it that way — and the screenshot
+above was taken with the local overlay moved aside, so it shows only what is published.
 
 The migration toolchain (`status-quo.sh` → `profile.json` → `migration-diff`) is the part most
 setup repos skip. [docs/09-MIGRATION.md](docs/09-MIGRATION.md) covers it; secrets never travel

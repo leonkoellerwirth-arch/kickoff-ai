@@ -68,6 +68,12 @@ Semantics for this repo:
   which set of rules applies before it does anything, and the two were previously
   not distinguished at all.
 
+- **`scripts/capture-screenshots.py`** — regenerates the Control Room images in
+  `docs/img/` with headless Chromium, and moves the machine-specific registry
+  overlay aside while it does, so a published screenshot can only ever show the
+  public registry. Playwright is a maintainer dependency; the setup, the gate and
+  the app remain free of it.
+
 ### Fixed
 
 - **`--dry-run` no longer asks questions, and no longer aborts without a
