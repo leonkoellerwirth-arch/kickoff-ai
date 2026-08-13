@@ -1,55 +1,45 @@
 # CLAUDE.md — kickoff-ai
 
-Read this before doing any work in this repo. It is the local anchor; the binding foundation is
-`dev/base/CONSTITUTION.md`, which takes precedence wherever this file disagrees with it.
+## Which role are you in? Decide this first.
 
-**Read order at session start (highest precedence first):**
-1. `dev/base/CONSTITUTION.md` — the paved-road constitution
-2. `BIBLE.md` — this repo's invariants + decision register (wins on any in-repo conflict)
-3. `HANDOFF.md` — newest session entry
-4. this file
+**If the user asks you to set up, check, fix, or migrate a Mac using this repository, you are
+the OPERATOR** — read [`docs/12-OPERATOR-PLAYBOOK.md`](docs/12-OPERATOR-PLAYBOOK.md) first and
+follow it exactly. It is a complete instruction set: what you may run without asking, what needs
+a confirmation first, and what you never run at all. Nothing below this section applies to you.
 
-## What this repo is
+**If the user asks you to change this repository's own code or documentation, you are a
+CONTRIBUTOR** — the rules below apply.
 
-A reproducible macOS developer environment, distilled from a verified inventory of one real
-machine. Four cumulative install levels, 41 verification checks, a 102-entry tool registry with
-a sunset state machine, and a machine-to-machine migration path.
+---
 
-**Zone:** Bridge — MIT open source, published at `github.com/leonkoellerwirth-arch/kickoff-ai`
-(see CONSTITUTION §1). Reference setup, not a framework — never overclaim it.
+## Contributor rules
 
-**Before writing anything public, read `docs/05-SANITIZATION.md`.** This repo is public; the
-sanitization scan blocks personal data, but it only knows the patterns it has been told.
+**Read order at session start** (highest precedence first): `dev/base/CONSTITUTION.md` →
+`BIBLE.md` (invariants + decision register, wins on any in-repo conflict) → `HANDOFF.md` (newest
+entry) → this file.
 
-## Session protocol
+**What this repo is:** a reproducible macOS developer environment, distilled from a verified
+inventory of one real machine. Four cumulative install levels, a verified check suite, a tool
+registry with a sunset state machine, a migration path, and a local app. The headline numbers
+live in `manifests/counts.json` and are generated — never type one by hand.
 
-- **Start every session with `/session-start`.** It runs `scripts/state.sh`, reads `HANDOFF.md`
-  + `BIBLE.md`, and reconstructs the exact state before anything changes.
-- **Do not start substantive work while a blocking `BIBLE` decision is open or the gate is red.**
-- **End every session with `/session-stop`.** Gate passes → `HANDOFF.md` updated → `BIBLE.md`
-  decisions recorded → granular commits → push → `scripts/secure.sh` green.
+**Zone:** Bridge — MIT open source (CONSTITUTION §1). A reference setup, not a framework; never
+overclaim it. **Before writing anything public, read [`docs/05-SANITIZATION.md`](docs/05-SANITIZATION.md).**
+The scan blocks personal data, but only the patterns it has been told.
 
-## The gate is law
+**Session protocol:** start with `/session-start`; do not begin substantive work while a
+blocking `BIBLE` decision is open or the gate is red; end with `/session-stop`. Any decision that
+exists only in the chat is lost unless it reaches `HANDOFF.md` or `BIBLE.md` first.
 
-`./scripts/gate.sh` must print **GATE: PASS** before any change is called done (lint, format,
-tests offline, no TODO/secrets/customer-names, build where present). CI mirrors it exactly.
+**The gate is law.** `./scripts/gate.sh` must print **GATE: PASS** before any change is called
+done. CI runs the same scripts.
 
-## Non-negotiables (CONSTITUTION §7)
+**Non-negotiables** are CONSTITUTION §7 — read them there, not here. The two that catch people
+out in this repo: no customer-internal names anywhere (all examples fictive), and everything
+documented must actually run.
 
-1. No scraping, no unofficial endpoints — not in code, comments, roadmap, or tests.
-2. No customer-internal names; all examples fictive.
-3. Secrets only via `.env` (git-ignored); `.env.example` is the contract.
-4. Everything documented must run; CI green before done.
-5. Run `/security-review` before merging anything touching `api/`, auth, AI-provider calls,
-   upload flows, content proxies, or HTML rendering.
+**House rules:** Conventional Commits, one concern per commit. Default to inline work; subagents
+are the exception (CONSTITUTION §9). Workflow and review rules for changes:
+[`CONTRIBUTING.md`](CONTRIBUTING.md).
 
-## House rules
-
-- Conventional Commits (`feat: fix: docs: test: chore: ci:`), one concern per commit.
-- Flag TypeScript `any` instead of silently accepting it.
-- Default to inline work; subagents are the exception (CONSTITUTION §9).
-- Any chat-only idea/decision is saved to `HANDOFF.md` before stop — or it's lost.
-
-## Skills
-
-`/session-start` · `/session-stop` · `/project-state`
+**Skills:** `/session-start` · `/session-stop` · `/project-state`

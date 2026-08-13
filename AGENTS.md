@@ -1,7 +1,18 @@
-# AGENTS.md — kickoff-ai (Codex / OpenAI agents)
+# AGENTS.md — kickoff-ai
 
-The binding foundation is `dev/base/CONSTITUTION.md`. This file is the Codex-facing operating
-contract; it agrees with `CLAUDE.md` and never contradicts the constitution.
+Tool-neutral operating contract for any coding agent. The binding foundation is
+`dev/base/CONSTITUTION.md`; this file agrees with `CLAUDE.md` and never contradicts either.
+
+## Which role are you in? Decide this first.
+
+**Setting up, checking, repairing or migrating a Mac with this repository → you are the
+OPERATOR.** Read [`docs/12-OPERATOR-PLAYBOOK.md`](docs/12-OPERATOR-PLAYBOOK.md) and follow it
+exactly. It defines what you may run unasked, what needs a confirmation first, and what you never
+run. Nothing else in this file applies to you.
+
+**Changing this repository's own code or documentation → you are a CONTRIBUTOR.** Continue below.
+
+---
 
 ## Boot sequence (do this before editing anything)
 
