@@ -3,6 +3,30 @@
 Session handoffs, **newest entry first**. Written by `/session-stop` (via
 `scripts/session-snapshot.sh`). Read the top entry at `/session-start`.
 
+## 2026-08-13 — Session close
+
+- **Working documents now live in `local/working-docs/`** — the two work orders and the README
+  template. They were untracked in `docs/`, which worked but made `secure.sh` report
+  `action needed` on every run, and a warning that is always on is a warning nobody reads. `local/`
+  is the gitignored private area and is where they belonged. `internal-briefing.sh` still refuses
+  them if they are ever staged, so the guard survives the move.
+
+- **Decided, and worth knowing for next time:** the work order asked for one PR per package. That
+  was not reconstructable after the fact — `app/server.py`, `README.md` and `scripts/gate.sh` each
+  carry changes from three packages, and splitting them retroactively would have produced
+  intermediate commits that fail the gate. Ten commits were made along the seams the files
+  actually allow, with shared files landing in the commit of their largest change. If per-package
+  PRs matter, the packages have to be *worked* one at a time, not sorted at commit time.
+
+- **Open, not done:**
+  - `prepare.sh:67` still uses `read -r x </dev/tty 2>/dev/null || x="n"`, which does not suppress
+    bash's own redirection error. The working form is `if { : </dev/tty; } 2>/dev/null; then`.
+    Left alone deliberately: `prepare.sh` is the one script that must stay standalone, and it did
+    not belong in a commit about something else.
+  - `local/README.md` is tracked, published, and in German, in a repo whose language decision is
+    English with German frozen under `docs/de/`. Small, but it is a public file.
+  - The two `doctor.sh` FAILs on this machine are still unfixed, unchanged from previous sessions.
+
 ## 2026-08-13 — History rewritten once: stray archive removed
 
 **`main` was force-pushed.** A local clone made before `e6c254e` has a divergent history —
