@@ -42,6 +42,13 @@ __pycache__/
 # Logs
 *.log
 
+# Archives — never a source artefact here. A `git archive` written into the repo
+# root during testing was committed once; this stops the next one.
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+
 # Brew bundle lock (no lock file wanted for a portable setup)
 Brewfile.lock.json
 Brewfile.optional.lock.json
