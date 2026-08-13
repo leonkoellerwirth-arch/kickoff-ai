@@ -45,7 +45,9 @@ fail=0
 # tracked template, so neither needs an exception.
 #
 # Excluded by path: the review (quotes the old code as evidence), the gap
-# analysis (documents the state of a machine before any setup ran),
+# analysis and its renamed example-assessment successor (both document the
+# state of a machine before any setup ran — the `git config --global` lines
+# are evidence of what the scan found, not commands the repo is issuing),
 # config/gitconfig and this file (both state the prohibition itself).
 #
 # Prose *about* the prohibition must stay possible — the warnings in the docs
@@ -63,7 +65,8 @@ hits="$(git grep -nE 'git config --global' -- \
     ':(exclude,glob)docs/reviews/**' \
     ':(exclude)config/gitconfig' \
     ':(exclude)scripts/checks/gitconfig-isolation.sh' \
-    ':(exclude,glob)docs/**/02-GAP-ANALY*' 2>/dev/null |
+    ':(exclude,glob)docs/**/02-GAP-ANALY*' \
+    ':(exclude,glob)docs/**/02-EXAMPLE-ASSESSMENT*' 2>/dev/null |
     grep -vE '^[^:]+:[0-9]+:[[:space:]]*[#>]' |
     grep -vE '`[^`]*git config --global')"
 if [ -n "$hits" ]; then
