@@ -50,6 +50,11 @@ Every entry has:
 The implementation lists (Brewfile, ollama-models.txt etc.) are the **execution**;
 `tools.yaml` is the **decision**. Both must match — CI verifies this.
 
+![The Drift view — what the currency system found, reported and never acted on](img/control-room-drift.png)
+
+The Control Room renders the same data the commands below produce. Note what the page does not
+have: a button that adopts, retires, or installs anything. That is INV-1 as a user interface.
+
 #### Public reference, private machine state
 
 The registry is split across two files, and the split is itself a governance decision:
