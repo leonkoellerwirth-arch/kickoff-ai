@@ -76,6 +76,19 @@ Semantics for this repo:
 
 ### Fixed
 
+- **The Control Room was invisible from the terminal.** Nothing on the
+  command-line path mentioned it: `prepare.sh` handed straight to `bootstrap.sh`,
+  and neither `bootstrap.sh` nor `doctor.sh` ever named `./start.sh`. Someone
+  arriving through the one-liner — the audience the app exists for — would never
+  find out it was there. `bootstrap.sh` now closes by naming it, and
+  `prepare.sh --no-bootstrap` offers it as the guided route before the
+  command-line one.
+- **`./start.sh` no longer dead-ends on a fresh Mac.** When `python3` is missing
+  it used to say "run `./prepare.sh`" and exit. It now explains what the Command
+  Line Tools are and offers to install them, asking first — installing is a
+  change to the machine, and the app's promise is that it never makes one
+  unasked. With no terminal to ask on, it prints both manual routes instead of
+  hanging, and a `--dry-run` says what it would offer without offering it.
 - **`--dry-run` no longer asks questions, and no longer aborts without a
   terminal.** `confirm()` read from `/dev/tty` even during a preview, so a level-1
   dry run stopped at module 08 with `/dev/tty: Device not configured` and never

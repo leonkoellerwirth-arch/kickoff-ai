@@ -3,6 +3,38 @@
 Session handoffs, **newest entry first**. Written by `/session-stop` (via
 `scripts/session-snapshot.sh`). Read the top entry at `/session-start`.
 
+## 2026-08-13 — The fresh-machine path actually reaches the app
+
+_gate PASS · CI green on 0f80365 before this entry · four fresh-machine scenarios tested_
+
+Asked whether `./start.sh` really runs on a brand-new Mac. Tested rather than assumed, and the
+answer was mostly yes with one gap that mattered more than the question.
+
+- **What was already fine.** `start.sh` needs `python3` and nothing else — no Homebrew, no Node,
+  no npm, no Docker. That is deliberate: an app that guides you through installing Node cannot
+  need Node. Verified: a GitHub ZIP download keeps the executable bit (`git archive` preserves
+  mode), so `./start.sh` works from an unzipped copy, and `bash start.sh` works either way.
+- **The gap that mattered: the Control Room was invisible from the terminal.** `prepare.sh`
+  `exec`s straight into `bootstrap.sh`; neither it nor `bootstrap.sh` nor `doctor.sh` ever
+  mentioned `./start.sh`. Anyone arriving through the one-liner — exactly the audience the app
+  was built for — would finish a two-hour setup without learning the app existed. The README's
+  "three ways in" is no help to somebody looking at a terminal. Fixed in both handoff points.
+- **`start.sh` no longer dead-ends.** Missing `python3` used to mean "go run `./prepare.sh`". It
+  now explains the Command Line Tools and offers to install them — asking first, because that is
+  a change to the machine. Non-interactive falls through to two manual routes; `--dry-run` says
+  what it would offer.
+- **One bug found while testing that:** `read -r x </dev/tty 2>/dev/null || x=""` does *not*
+  suppress bash's own redirection error, so a headless run printed
+  `start.sh: line 121: /dev/tty: Device not configured` before falling back. The working form is
+  `if { : </dev/tty; } 2>/dev/null; then`. **`prepare.sh:67` still has the old pattern** and will
+  leak the same line on a machine with no controlling terminal — not fixed here because
+  `prepare.sh` is the one script that must stay standalone and I did not want to touch it in the
+  same commit as an unrelated change. Worth doing.
+
+- **Continuity warning:** the prerequisite story is now told in four places — `start.sh` itself,
+  `bootstrap.sh`'s closing banner, `prepare.sh --no-bootstrap`, and the operator playbook. They
+  agree today. Nothing checks that they still agree tomorrow.
+
 ## 2026-08-13 — AP-H: the repo is operable by an agent, and the README is the owner's
 
 _gate PASS (19 checks) · self-test PASS · acceptance test from AP-H §5 run and passed_

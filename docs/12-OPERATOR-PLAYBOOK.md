@@ -149,6 +149,20 @@ nothing yet. Use the one-liner instead, which needs no git and no repository:
 That is the FREE variant and it changes nothing. It also tells you whether the machine can run
 the setup at all.
 
+### Step 1b — Tell them the Control Room exists
+
+`./start.sh` works from this moment on, before any level has been installed. It needs `python3`
+and nothing else — not Homebrew, not Node, not Docker — and it changes nothing until told to.
+
+Mention it once, now: it is the thing that shows them where their machine stands while you work,
+and it is how they will check on it after you are gone. Do not start it yourself and then walk
+away from the conversation — it holds the terminal until stopped with Ctrl-C. Offer it, and let
+them run it in their own window.
+
+If `python3` turns out to be missing, `./start.sh` says so and offers to install the Command Line
+Tools. That is a change to the machine, so it falls in the ANNOUNCED class: let them answer the
+question, or run `xcode-select --install` yourself after asking.
+
 ### Step 2 — Check the machine
 
 Run `./prepare.sh --check-only`. Summarise the result in **two sentences**: whether the machine

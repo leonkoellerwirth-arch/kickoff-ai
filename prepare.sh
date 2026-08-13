@@ -448,8 +448,11 @@ _step "Phase 3 — Hand-off to bootstrap.sh"
 
 if [ "$NO_BOOTSTRAP" = "1" ]; then
     _ok "Preparation complete. bootstrap.sh was not started (--no-bootstrap)."
-    printf "\n%sNext steps:%s\n" "$_B" "$_X" >&2
+    printf "\n%sNext step — the guided way:%s\n" "$_B" "$_X" >&2
     printf "  cd %s\n" "$_REPO_DIR" >&2
+    printf "  ./start.sh          opens the Control Room in your browser and walks\n" >&2
+    printf "                      you through the rest. It changes nothing on its own.\n" >&2
+    printf "\n%sOr straight from the command line:%s\n" "$_B" "$_X" >&2
     printf "  ./bootstrap.sh --level %s\n" "$LEVEL" >&2
     printf "  ./doctor.sh\n\n" >&2
     exit 0

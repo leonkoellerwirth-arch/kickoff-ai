@@ -97,16 +97,57 @@ fi
 # not, name the one command that fixes it rather than letting a dialog surprise
 # the user.
 if ! command -v python3 >/dev/null 2>&1 || ! python3 -c 'pass' >/dev/null 2>&1; then
+    # This is the one thing a brand-new Mac is missing, and the user is not
+    # supposed to know that. Offer to fix it here rather than sending them to
+    # another script — but ask first: installing the Command Line Tools is a
+    # change to the machine, and this app's whole promise is that it never makes
+    # one unasked (INV-1, INV-2).
     cat >&2 <<'EOF'
-python3 is not available yet.
 
-It comes with the Xcode Command Line Tools, which are the very first thing this
-setup installs. Run this once, confirm the dialog, wait for it to finish:
+python3 is not available on this Mac yet.
 
-  ./prepare.sh
+It arrives with the Xcode Command Line Tools — a one-time, ~2 GB download from
+Apple that this setup needs anyway. It is the first thing any path here installs.
 
-Then run ./start.sh again.
 EOF
+    if [ "$DRY_RUN" = 1 ]; then
+        echo "Would offer to run: xcode-select --install" >&2
+        exit 1
+    fi
+
+    # /dev/tty exists as a device node even with no controlling terminal, so
+    # testing for the file is not enough — open it and see. The braces catch
+    # bash's own redirection error, which a redirect on `read` itself does not.
+    answer=""
+    if { : </dev/tty; } 2>/dev/null; then
+        printf 'Install the Command Line Tools now? [y/N] ' >&2
+        read -r answer </dev/tty 2>/dev/null || answer=""
+    fi
+
+    case "$answer" in
+        [yY] | [yY][eE][sS])
+            echo >&2
+            echo "Starting the installer. Confirm Apple's dialog, then wait for it to finish." >&2
+            echo "It runs in the background — this window can be closed." >&2
+            xcode-select --install 2>&1 | sed 's/^/  /' >&2 || true
+            cat >&2 <<'EOF'
+
+When the installer is done, run this again:
+
+  ./start.sh
+
+EOF
+            ;;
+        *)
+            cat >&2 <<'EOF'
+Nothing was installed. Two ways forward, whenever you are ready:
+
+  xcode-select --install     the Command Line Tools on their own, then ./start.sh
+  ./prepare.sh               checks the whole machine and installs them as step one
+
+EOF
+            ;;
+    esac
     exit 1
 fi
 

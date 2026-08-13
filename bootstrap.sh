@@ -433,6 +433,14 @@ else
     printf "%s%s========================================%s\n" "$_BOLD" "$_RED" "$_RESET" >&2
 fi
 
+# The guided app is the thing a person is most likely to want next and least
+# likely to know exists — nothing on the command-line path mentions it, so
+# somebody arriving through prepare.sh would never find out.
+printf "\n%s%s  Next: ./start.sh%s opens the Control Room in your browser —\n" \
+    "$_BOLD" "$_CYAN" "$_RESET" >&2
+printf "  where this Mac stands, what to do next, and every command below behind\n" >&2
+printf "  a button. It changes nothing until you tell it to.\n" >&2
+
 # Manual steps
 summary_manual "claude login                 → Connect Claude Code to your account"
 summary_manual "Open a new shell             → Activate all PATH changes"
