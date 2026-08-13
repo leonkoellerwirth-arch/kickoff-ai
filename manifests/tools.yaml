@@ -423,38 +423,6 @@
   sunset: null
   replaced_by: null
 
-- id: bird-steipete
-  name: bird (steipete/tap)
-  category: shell
-  source: brew
-  ref: steipete/tap/bird
-  level: 3
-  status: candidate
-  version_seen: ""
-  version_check: manual
-  check_ref: steipete/tap
-  why: "Origin unclear — found in brew leaves from steipete/tap; needs review"
-  added: 2026-08-11
-  reviewed: 2026-08-11
-  sunset: null
-  replaced_by: null
-
-- id: summarize
-  name: summarize
-  category: shell
-  source: brew
-  ref: summarize
-  level: 3
-  status: candidate
-  version_seen: ""
-  version_check: brew
-  check_ref: summarize
-  why: "Origin unclear — found in brew leaves; needs review"
-  added: 2026-08-11
-  reviewed: 2026-08-11
-  sunset: null
-  replaced_by: null
-
 - id: himalaya
   name: himalaya
   category: shell
@@ -587,70 +555,6 @@
   sunset: null
   replaced_by: null
 
-- id: omniroute
-  name: OmniRoute
-  category: node
-  source: npm
-  ref: omniroute
-  level: 3
-  status: candidate
-  version_seen: ""
-  version_check: npm
-  check_ref: omniroute
-  why: "Routing agent installed globally via npm; production status unclear — needs review"
-  added: 2026-08-11
-  reviewed: 2026-08-11
-  sunset: null
-  replaced_by: null
-
-- id: mcporter
-  name: mcporter
-  category: node
-  source: npm
-  ref: mcporter
-  level: 3
-  status: candidate
-  version_seen: ""
-  version_check: npm
-  check_ref: mcporter
-  why: "Origin unclear — found in global npm packages; needs review"
-  added: 2026-08-11
-  reviewed: 2026-08-11
-  sunset: null
-  replaced_by: null
-
-- id: ruflo
-  name: ruflo
-  category: node
-  source: npm
-  ref: ruflo
-  level: 3
-  status: candidate
-  version_seen: ""
-  version_check: npm
-  check_ref: ruflo
-  why: "Origin unclear — found in global npm packages; needs review"
-  added: 2026-08-11
-  reviewed: 2026-08-11
-  sunset: null
-  replaced_by: null
-
-- id: uipro-cli
-  name: uipro-cli
-  category: node
-  source: npm
-  ref: uipro-cli
-  level: 3
-  status: candidate
-  version_seen: ""
-  version_check: npm
-  check_ref: uipro-cli
-  why: "Origin unclear — found in global npm packages; needs review"
-  added: 2026-08-11
-  reviewed: 2026-08-11
-  sunset: null
-  replaced_by: null
-
 # =============================================================================
 # PYTHON STACK
 # =============================================================================
@@ -714,22 +618,6 @@
   version_check: github-release
   check_ref: conda-forge/miniforge
   why: "conda for projects that require conda-forge-only packages (ML, science); conda-base stays minimal"
-  added: 2026-08-11
-  reviewed: 2026-08-11
-  sunset: null
-  replaced_by: null
-
-- id: python-gdbm
-  name: python-gdbm@3.11
-  category: python
-  source: brew
-  ref: python-gdbm@3.11
-  level: 2
-  status: candidate
-  version_seen: ""
-  version_check: brew
-  check_ref: python-gdbm@3.11
-  why: "Origin unclear — found in brew leaves; likely a dependency of conda or pip packages; needs review"
   added: 2026-08-11
   reviewed: 2026-08-11
   sunset: null
@@ -855,22 +743,6 @@
   sunset: null
   replaced_by: ollama
 
-- id: gpt4all
-  name: GPT4All
-  category: ai
-  source: cask
-  ref: gpt4all
-  level: 2
-  status: candidate
-  version_seen: ""
-  version_check: brew
-  check_ref: gpt4all
-  why: "Origin unclear — installed as a cask but not in Brewfile; needs review"
-  added: 2026-08-11
-  reviewed: 2026-08-11
-  sunset: null
-  replaced_by: null
-
 - id: openai-whisper
   name: openai-whisper
   category: ai
@@ -967,38 +839,6 @@
   sunset: null
   replaced_by: null
 
-- id: kilo-cli
-  name: Kilo Code CLI
-  category: ai
-  source: npm
-  ref: "@kilocode/cli"
-  level: 3
-  status: candidate
-  version_seen: ""
-  version_check: npm
-  check_ref: "@kilocode/cli"
-  why: "Origin unclear — found in global npm packages; needs review"
-  added: 2026-08-11
-  reviewed: 2026-08-11
-  sunset: null
-  replaced_by: null
-
-- id: oracle-steipete
-  name: "@steipete/oracle"
-  category: ai
-  source: npm
-  ref: "@steipete/oracle"
-  level: 3
-  status: candidate
-  version_seen: ""
-  version_check: npm
-  check_ref: "@steipete/oracle"
-  why: "Origin unclear — found in global npm packages; needs review"
-  added: 2026-08-11
-  reviewed: 2026-08-11
-  sunset: null
-  replaced_by: null
-
 # --- OpenClaw (sunset) ---
 
 - id: openclaw-npm
@@ -1011,7 +851,7 @@
   version_seen: "2026.2.9"
   version_check: npm
   check_ref: openclaw
-  why: "AI gateway daemon; OPENCLAW_PATH points to a non-existent directory, all 4 aliases lead nowhere; marked as obsolete by the user"
+  why: "AI gateway daemon, superseded by Claude Code; classified obsolete and retired with its aliases, tap and LaunchAgent"
   added: 2025-01-01
   reviewed: 2026-08-11
   sunset: "2026-08-08"
@@ -1131,7 +971,7 @@
   version_seen: ""
   version_check: brew
   check_ref: postgresql@14
-  why: "Outdated version; Brewfile updated to @17 but @14 is still actually installed"
+  why: "Superseded by postgresql@17 in the Brewfile; kept until its sunset date so existing databases are migrated rather than dropped"
   added: 2026-08-11
   reviewed: 2026-08-11
   sunset: "2026-11-09"
@@ -1475,7 +1315,7 @@
   version_seen: "2.34.1"
   version_check: brew
   check_ref: 1password-cli
-  why: "Being replaced by bitwarden-cli + self-hosted Vaultwarden. User decision: no SaaS dependency, full data sovereignty."
+  why: "Replaced by bitwarden-cli against a self-hosted Vaultwarden; rationale recorded in BIBLE.md"
   added: 2026-08-11
   reviewed: 2026-08-11
   sunset: "2026-11-09"
@@ -1629,22 +1469,6 @@
   sunset: null
   replaced_by: null
 
-- id: aliwangwang
-  name: AliWangWang
-  category: automation
-  source: cask
-  ref: aliwangwang
-  level: 3
-  status: candidate
-  version_seen: ""
-  version_check: manual
-  check_ref: ""
-  why: "Origin unclear — installed as a cask, not in Brewfile; needs review"
-  added: 2026-08-11
-  reviewed: 2026-08-11
-  sunset: null
-  replaced_by: null
-
 # --- OpenClaw Gateway LaunchAgent (sunset) ---
 
 - id: openclaw-gateway-launchd
@@ -1707,7 +1531,7 @@
   version_seen: ""
   version_check: manual
   check_ref: ""
-  why: "Orphaned LaunchAgent — mariadb is no longer installed, but the plist is still present at ~/Library/LaunchAgents; scripts/90-cleanup-legacy.sh removes it"
+  why: "Orphaned LaunchAgent from a MariaDB installation that no longer exists; scripts/90-cleanup-legacy.sh removes it where one is found"
   added: 2024-01-01
   reviewed: 2026-08-11
   sunset: "2026-08-08"

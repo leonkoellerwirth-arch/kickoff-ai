@@ -26,6 +26,13 @@ source "$_LIB_CURRENCY_DIR/lib-automation.sh"
 
 # Path to the registry
 TOOLS_YAML="$_REPO_ROOT/manifests/tools.yaml"
+# The machine-specific overlay. The public registry is a curated reference
+# manifest; what one particular machine turned out to have is a different thing
+# and is private by design, so it lives in gitignored local/. Read on top of the
+# public file when it exists: an id present in both wins here, new ids are added.
+# Overridable so a test can point at a fixture.
+# shellcheck disable=SC2034  # read by the registry_* helpers below
+TOOLS_LOCAL_YAML="${TOOLS_LOCAL_YAML:-$_REPO_ROOT/local/manifests/tools.local.yaml}"
 # Overridable so a read-only caller can redirect the write. up2date always
 # refreshes STATE.json, which is a tracked file — fine when a human runs the
 # check, not fine when the GATE runs it, because the gate promises to change
@@ -383,18 +390,45 @@ fetch_upstream_version() {
 
 # =============================================================================
 # Registry read helpers (yq-based)
+#
+# Every read spans both files: the public registry and, when it exists, the
+# machine-specific overlay. Two files are queried rather than one merged temp
+# file on purpose — a temp file would need a trap to clean up, and this library
+# is sourced by callers that set their own traps.
 # =============================================================================
+
+# Runs a yq expression against both registry files, public first.
+# Callers that need unique IDs pipe through registry_dedupe.
+registry_query() {
+    yq e "$1" "$TOOLS_YAML" 2>/dev/null
+    [ -f "$TOOLS_LOCAL_YAML" ] && yq e "$1" "$TOOLS_LOCAL_YAML" 2>/dev/null
+    return 0
+}
+
+# Drops empty lines and repeats, keeping first-seen order.
+registry_dedupe() {
+    awk 'NF && !seen[$0]++'
+}
 
 # Returns all IDs from the registry (one per line)
 registry_list_ids() {
-    yq e '.[].id' "$TOOLS_YAML" 2>/dev/null
+    registry_query '.[].id' | registry_dedupe
 }
 
-# Returns the value of a specific field for an ID
+# Returns the value of a specific field for an ID.
+# The overlay wins: if the id exists there, that entry answers, nulls included.
 # Usage: registry_get <id> <field>
 registry_get() {
     local id="$1"
     local field="$2"
+    local value
+    if [ -f "$TOOLS_LOCAL_YAML" ]; then
+        value="$(yq e ".[] | select(.id == \"$id\") | .$field" "$TOOLS_LOCAL_YAML" 2>/dev/null)"
+        if [ -n "$value" ]; then
+            printf '%s\n' "$value"
+            return 0
+        fi
+    fi
     yq e ".[] | select(.id == \"$id\") | .$field" "$TOOLS_YAML" 2>/dev/null
 }
 
@@ -402,19 +436,31 @@ registry_get() {
 # Usage: registry_ids_by_status active
 registry_ids_by_status() {
     local status="$1"
-    yq e ".[] | select(.status == \"$status\") | .id" "$TOOLS_YAML" 2>/dev/null
+    registry_query ".[] | select(.status == \"$status\") | .id" | registry_dedupe
 }
 
 # Returns all IDs that do NOT have a specific status
 # Usage: registry_ids_not_status sunset
 registry_ids_not_status() {
     local status="$1"
-    yq e ".[] | select(.status != \"$status\") | .id" "$TOOLS_YAML" 2>/dev/null
+    registry_query ".[] | select(.status != \"$status\") | .id" | registry_dedupe
 }
 
 # Returns active + candidate IDs (the ones to check)
 registry_checkable_ids() {
-    yq e '.[] | select(.status == "active" or .status == "candidate") | .id' "$TOOLS_YAML" 2>/dev/null
+    registry_query '.[] | select(.status == "active" or .status == "candidate") | .id' | registry_dedupe
+}
+
+# Which file owns an ID — so a write lands where the entry actually lives and a
+# machine-specific note is never written into the public manifest.
+registry_file_for() {
+    local id="$1"
+    if [ -f "$TOOLS_LOCAL_YAML" ] \
+        && [ -n "$(yq e ".[] | select(.id == \"$id\") | .id" "$TOOLS_LOCAL_YAML" 2>/dev/null)" ]; then
+        printf '%s\n' "$TOOLS_LOCAL_YAML"
+    else
+        printf '%s\n' "$TOOLS_YAML"
+    fi
 }
 
 # =============================================================================
@@ -427,15 +473,19 @@ registry_set() {
     local id="$1"
     local field="$2"
     local value="$3"
+    local target
+    target="$(registry_file_for "$id")"
     # yq in-place edit
-    yq e -i "(.[] | select(.id == \"$id\") | .$field) = \"$value\"" "$TOOLS_YAML" 2>/dev/null
+    yq e -i "(.[] | select(.id == \"$id\") | .$field) = \"$value\"" "$target" 2>/dev/null
 }
 
 # Sets a null field (e.g. sunset: null)
 registry_set_null() {
     local id="$1"
     local field="$2"
-    yq e -i "(.[] | select(.id == \"$id\") | .$field) = null" "$TOOLS_YAML" 2>/dev/null
+    local target
+    target="$(registry_file_for "$id")"
+    yq e -i "(.[] | select(.id == \"$id\") | .$field) = null" "$target" 2>/dev/null
 }
 
 # =============================================================================

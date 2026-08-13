@@ -50,6 +50,26 @@ Every entry has:
 The implementation lists (Brewfile, ollama-models.txt etc.) are the **execution**;
 `tools.yaml` is the **decision**. Both must match — CI verifies this.
 
+#### Public reference, private machine state
+
+The registry is split across two files, and the split is itself a governance decision:
+
+| File | Contains | Published |
+|---|---|---|
+| `manifests/tools.yaml` | The curated reference: tools this setup installs or deliberately tracks, each with an impersonal reason | yes |
+| `local/manifests/tools.local.yaml` | What one particular machine turned out to have — findings from `mac-snapshot` and `sunset propose`, and the owner's own decision notes | no, `local/` is gitignored |
+
+Both use the same schema. Every reader — `up2date`, `sunset`, `migration-diff` and the
+Control Room — reads the public file and lays the local one on top: an `id` present in both is
+answered by the local entry, and new ids are added. Writes go back to whichever file owns the
+entry, so a machine-specific note can never land in the published manifest.
+
+The reason for the split: **a reference manifest and a machine's actual state are different
+things, and the second one is private by design.** A published inventory that also reports what
+is installed on a named person's laptop is a self-disclosure, not a reference. The rule is
+enforced rather than remembered — `scripts/checks/registry-privacy.sh` fails the gate when the
+public file starts describing a specific machine again.
+
 ### 2. Checker: `automation/bin/up2date`
 
 Read-only against the system. Checks every active/candidate entry against upstream
