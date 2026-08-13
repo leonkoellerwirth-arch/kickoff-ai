@@ -3,6 +3,216 @@
 Session handoffs, **newest entry first**. Written by `/session-stop` (via
 `scripts/session-snapshot.sh`). Read the top entry at `/session-start`.
 
+## 2026-08-13 — AP-H: the repo is operable by an agent, and the README is the owner's
+
+_gate PASS (19 checks) · self-test PASS · acceptance test from AP-H §5 run and passed_
+
+- **Done — the operator role.** `docs/12-OPERATOR-PLAYBOOK.md` (12, because 10 and 11 are taken
+  by the app and governance documents — the work order assumed a different numbering).
+  `CLAUDE.md` rewritten as a router, ~35 lines, role switch first; `AGENTS.md` mirrors it
+  tool-neutrally. README gained the third way in. Governance document gained one paragraph
+  naming the playbook as the third fenced-execution example — and stating its limit, that a
+  playbook is instructions and not a control.
+- **Done — the README is the owner's template.** `docs/templates/README.md` installed as
+  `README.md`, with three changes made during the swap, all of them because the template's
+  assumptions had to be checked against the tree:
+  1. Doc links remapped: `docs/11-OPERATOR-PLAYBOOK` → `docs/12-`, `docs/10-GOVERNANCE-PATTERN`
+     → `docs/11-` (twice).
+  2. **Every number recounted rather than trusted, as instructed.** 42 checks, 12 modules,
+     14 commands — all three were already correct. They are now also *enforced*: `counts.sh`
+     was widened from two numbers to four, so the README's own claim ("these counts are
+     enforced, not remembered") is true for every figure it prints. Verified by planting a wrong
+     module count and watching the gate fail.
+  3. The `doctor.sh` sample block is real output from this machine, not the template's
+     approximation — the template's version differed in format and in one version string.
+- **Done — the screenshot is still missing** and is the one thing in AP-F/AP-H I could not do.
+  The image line is a comment in `README.md` carrying the exact steps, including renaming the
+  local overlay first so no private candidates appear in the picture. The comment deliberately
+  does not write the path as a Markdown link, because the link checker reads comments too.
+
+- **The acceptance test found a real bug, which is the point of having one.** AP-H §5 asks for a
+  FREE-commands-only walkthrough proving nothing outside `local/` changes. It proved that — and
+  it also showed `./bootstrap.sh --level 1 --dry-run` exiting 1 after aborting at module 08 with
+  `/dev/tty: Device not configured`. `confirm()` prompted during a dry run. Consequences:
+  - The preview never showed modules 09, 10 and 11 to anyone without a terminal.
+  - **The Control Room's own preview button was broken** for every level above 0, because the
+    server pipes stdout and has no tty. Shipped that way earlier today.
+  - Fixed in `scripts/lib.sh` (a dry run assumes yes and asks nothing; a missing terminal is a
+    "no" with a message, not a bash error), and the same pattern outside `confirm()` in
+    `08-git-ssh.sh` and `11-paved-road.sh`.
+  - After the fix all four levels preview end to end, and the file-timestamp comparison confirms
+    nothing outside `local/` was created or modified.
+- **Second finding: exit 2 is not a failure.** A dry run ends by running `doctor.sh` against the
+  real machine, so a pre-existing FAIL sets exit 2 — correct, but it made the app label a
+  successful preview "failed". Actions now declare which exit codes mean success
+  (`ok_codes`), and the playbook carries the exit-code table so an agent reports it correctly.
+
+- **Decided:** three new `BIBLE.md` entries — two roles decided in the first ten lines; the
+  playbook's three classes and the app's two badges are one boundary; a dry run answers its own
+  questions.
+
+- **Open:**
+  1. The README screenshot (above). Everything else in AP-H is done.
+  2. `docs/templates/README.md` is left untracked — it is the source the README was built from,
+     and a tracked copy would be a second README that the counts check would also police.
+  3. Both work-order documents stay untracked, guarded by `internal-briefing.sh`.
+
+- **Continuity warnings:**
+  - **`--dry-run` now means "assume yes".** Any `confirm()` added in future is answered
+    affirmatively during a preview, so a preview shows the most complete path, not the most
+    cautious one. If a future prompt gates something whose *preview* is expensive or noisy,
+    guard it on `DRY_RUN` explicitly rather than relying on `confirm()`.
+  - The playbook names commands and flags directly. Renaming a script or changing a flag breaks
+    it silently — nothing checks the playbook against the tree. Every command in it was verified
+    by hand today; that verification does not repeat itself.
+  - `manifests/counts.json` now carries five numbers, two of them new. Adding a module or an
+    `automation/bin` command makes it stale, and the gate will say so.
+
+## 2026-08-13 — Work order v2 executed: product reality and positioning
+
+_gate PASS (19 checks) · self-test PASS · First Light verified end to end in 9s_
+
+Seven packages from `docs/kickoff-ai-auftrag-v2-final.md` (untracked, and now structurally
+kept that way — see below).
+
+- **AP-C · The numbers agree.** Counted: **42** doctor checks, **92** public registry entries.
+  `manifests/counts.json` is generated by `scripts/checks/counts.sh --write`; the same script
+  runs in the gate and fails when README, docs or app disagree. Corrected `QUICKSTART.md` (41),
+  `docs/00-ZERO-TO-HERO.md` and `docs/01-MANUAL.md` (~40), README (102 and 103). The app no
+  longer hard-codes a check count — it reads `counts.json`.
+- **AP-B · Registry split.** 11 entries that were raw inventory findings moved to
+  `local/manifests/tools.local.yaml` (gitignored): the nine "Origin unclear" candidates, plus
+  `omniroute` — see the open item below. Four entries keeping a personal voice were rewritten as
+  fact (`openclaw-npm`, `1password-cli`, `postgresql-14`, `mariadb-launchd`); the OpenClaw sunset
+  chain stays public because it is the best lifecycle example the repo has. `lib-currency.sh` and
+  the app read both files, overlay wins on a duplicate id, and writes go to whichever file owns
+  the entry. Guarded by `scripts/checks/registry-privacy.sh` (verified both ways).
+- **AP-E · `docs/02-EXAMPLE-ASSESSMENT.md`.** Rewritten as a historical report about an
+  anonymous scanned system; stub left at the old path so the four inbound links still resolve.
+  A.9 lost its year, A.14 its GB figures (threshold instead), A.17 its counts, B.1 its path.
+  `gitconfig-isolation.sh` gained the new filename in its exclusion — those `git config --global`
+  lines are quoted evidence, not instructions this repo gives.
+- **AP-A · First Light.** `scripts/12-first-light.sh` + guide step 16. Verified on this machine:
+  **9 seconds**, exit 0, `~/dev/first-light/SUMMARY.md` written by Claude Code, Finder opened.
+  Falls back to the smallest installed Ollama model, which is the path that needs no account and
+  no network. No `timeout` — stock macOS has none, and this repo has already been bitten by
+  assuming otherwise — so the 55s budget is polled by hand.
+- **AP-D · `docs/11-GOVERNANCE-PATTERN.md`.** ~2,300 words. Five elements, each with the repo
+  artefact as evidence; a three-column standards table whose third column states what is *not*
+  claimed, per row; limits stated bluntly. Linked from the README and available as a tab in the
+  Control Room's Docs view. Its registry numbers were written before AP-B landed and have been
+  corrected to the post-split counts.
+- **AP-F · README reordered.** Two entry paths lead with `./start.sh` first; the principle block
+  ("the machine reports; the human decides") sits above the problem statement; the differentiator
+  table gained a First Light row and a link to the governance document. "What This Is Not" grew
+  the three conformity disclaimers and lost "Not zero-config" in favour of an honest statement
+  that the structure transfers as-is. "Who It's For" is now two paragraphs, the non-expert first.
+  The regulatory background is generic — the previous naming of specific supervisory regimes is
+  gone.
+- **AP-G · Handle.** Recorded below, nothing done in the repo, as instructed.
+
+- **Decided:** Four new entries in `BIBLE.md` — public reference vs. private machine state;
+  headline numbers are generated, never typed; First Light is fenced harder than the task
+  requires; the README leads with the product and grows the disclaimer rather than softening it.
+
+- **Open / to do by hand:**
+  1. **Repo description** (GitHub UI only). Suggested text, numbers from `counts.json`:
+     *"From a blank Mac to a working, verified AI development environment — guided by a local
+     Control Room. One command to start, 42 checks to prove it, and a 92-tool registry that
+     knows when it goes stale."*
+  2. **README screenshot — not done.** AP-F point 2 asks for a Control Room dashboard image in
+     `docs/img/`. Producing one needs a screen capture of a browser window, which needs screen
+     recording permission and a human deciding what is on screen. To do it: `./start.sh`, open
+     the Dashboard, `⌘⇧4` then space, click the window, save it into `docs/img/` as
+     `control-room.png`, and add a Markdown image reference to it under the intro. **Check the
+     image against AP-B first** — the Tools and Drift views must not show the local overlay, so
+     take the shot with `local/manifests/tools.local.yaml` temporarily renamed.
+  3. **`omniroute` moved to the local overlay.** The BIBLE open decision asked whether it stays
+     in the registry, because the package name identifies the author. Moving it resolves the
+     identification half only; whether it is ever adopted is still an open decision, now tracked
+     locally.
+  4. **The GitHub handle** — the `-arch`-suffixed account the clone URL points at. *For keeping
+     it:* changing it breaks every published link, the one-liner in every document, and the CI
+     badge. *For changing it:* the suffix reads as Arch Linux to anyone scanning, and a full
+     personal name is close to unfindable next to the project names it hosts. Author decision,
+     outside this repo. (Naming it in full here would trip the sanitization scan, which is
+     working as intended — it is allowed in the clone URL and nowhere else.)
+  5. `docs/kickoff-ai-auftrag-v2-final.md` is a work order and stays untracked.
+     `scripts/checks/internal-briefing.sh` now also refuses `*auftrag*`, so a `git add -A`
+     cannot publish it by accident. Verified: staging it fails the gate.
+
+- **Continuity warnings:**
+  - **The registry has two files now.** Anything that reads `manifests/tools.yaml` directly,
+    rather than through the `registry_*` helpers, will silently see only the public half. Two
+    callers already read it directly and were not changed: `scripts/04-node.sh` and the two
+    registry checks — correct in all three cases, because installs and public schema validation
+    should see the public file only. New callers need to decide which they mean.
+  - **`counts.json` goes stale the moment a check or a tool is added.** The gate says so, and the
+    fix is one command: `scripts/checks/counts.sh --write`. Do not edit the file by hand.
+  - First Light writes into `~/dev/first-light/` and will overwrite `visits.csv`, `note.txt` and
+    `SUMMARY.md` there on every run. That folder is meant to be disposable; nothing else is.
+
+## 2026-08-13 — The Control Room: a local app for the non-technical user
+
+_gate PASS (17 checks) · app verified end to end against the real scripts_
+
+- **Done:** `./start.sh` opens a local app at `127.0.0.1:8787` covering the whole path a new
+  machine walks. Six views: Dashboard (machine probe, level reached, drift), Guide (15 ordered
+  steps, preview → run → verify per level), Tools (all 103 registry entries, searchable and
+  filterable), Drift (currency numbers, what is retiring, which candidates await a decision),
+  Migration (the four-step old-Mac-to-new-Mac path), Docs (the repository's documents rendered
+  in-app). Files: `start.sh`, `app/server.py`, `app/ui/{index.html,app.css,app.js}`,
+  `docs/10-APP.md`.
+  - **Adopted from `dev/local-agent-pipeline/web/`** — its audit console is the closest
+    relative: stdlib-Python API, localhost-only, session token plus Origin allow-list, real
+    commands driven from the browser, project docs surfaced in the app. The Vite/React frontend
+    was *not* adopted; see the BIBLE entry for why.
+  - **The app installs nothing.** Read-only actions (`prepare.sh --check-only`,
+    `bootstrap.sh --dry-run`, `doctor.sh`, `up2date`, `status-quo.sh`, `migration-diff`) run in
+    the server and stream into the page. The real `bootstrap.sh` run is written to
+    `local/app-runs/<stamp>-bootstrap-run.command` and opened in Terminal.app.
+  - **No arbitrary commands.** The browser posts an action id; `ACTIONS` in `app/server.py` maps
+    it to a fixed argv list executed without a shell. Verified: unknown action → 400, level 9 →
+    400, level on an action that takes none → 400, `bootstrap-run` without `confirm: true` →
+    400, missing token → 403, foreign `Origin` → 403, `/ui/../server.py` → 404.
+  - Gate gained `scripts/checks/python-syntax.sh` (17 checks now). It compiles in memory —
+    `py_compile` would write `__pycache__` into the tree the gate is judging, which is the
+    bug c32e871 just fixed for `STATE.json`. `__pycache__/` and `*.pyc` added to `.gitignore`.
+
+- **Decided:** Three new entries in `BIBLE.md` — no build step and no npm (the app's audience is
+  a machine without Node); installs are handed to Terminal rather than run by the server (sudo
+  needs a TTY, and a web progress bar hides what is happening to the machine); `tools.yaml` is
+  read by a narrow reader because PyYAML is gone and `yq` does not exist yet on a fresh Mac.
+  Owner instruction honoured throughout: **the app adds no automation** — everything that was
+  manual stays manual.
+
+- **Open:**
+  - Two new entries in the `BIBLE.md` open list: the CLI contract does not cover the root entry
+    points (and they disagree — `bootstrap.sh`/`prepare.sh`/`status-quo.sh` exit 1 on an unknown
+    option, `start.sh`/`doctor.sh` exit 2), and `app/ui/app.js` has no linter that runs without
+    npm.
+  - The app has only been exercised on a machine that is already fully set up. Its own
+    chicken-and-egg claim — that it runs on a Mac with nothing but the Command Line Tools — is
+    argued, not observed. Same gap as the rest of the repo.
+  - The four carried-over items from the previous session are untouched.
+
+- **Next:**
+  1. Look at the app in a browser and say what should change — this is a first cut of the
+     wording and the layout, and it is aimed at someone who does not know the repo.
+  2. Decide whether the real `bootstrap.sh` run should also appear on the Dashboard, or stay
+     guide-only as it is now.
+  3. The three open decisions from the previous session are still open.
+
+- **Continuity warnings:**
+  - `app/server.py` is the second executable surface in this repo and the first one that is not
+    shell. Anything added to `ACTIONS` is a new thing a browser can start — that list is the
+    security boundary, so treat additions to it the way you would treat a new API route.
+  - The app's step list and the level table in `README.md`/`docs/00-ZERO-TO-HERO.md` are written
+    twice, in `LEVELS` and `build_guide()` in `app/server.py`. Change the levels and both places
+    must move, or the app will confidently describe a setup that no longer exists.
+  - `local/app-runs/` accumulates one `.command` file per real run. It is gitignored and
+    deliberate — it is the record of what the app handed over — but nothing prunes it.
+
 ## 2026-08-11 — Review remediation + v0.2.0 released
 
 _gate PASS (16 checks) · self-test PASS · doctor 42 checks · CI green · v0.2.0 public_

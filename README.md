@@ -1,233 +1,213 @@
 # kickoff-ai
 
-> Every setup repo is correct on the day it's written. This one knows when it stops being true.
+> Every setup is correct on the day it's made — and never again. This one knows when it stops being true, and shows you where you stand before it changes anything.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![macOS 26.5 tested](https://img.shields.io/badge/macOS-26.5%20tested-lightgrey)](#what-this-is-not)
 [![shellcheck](https://img.shields.io/badge/shellcheck-clean-brightgreen)](https://github.com/koalaman/shellcheck)
 [![CI](https://github.com/leonkoellerwirth-arch/kickoff-ai/actions/workflows/validate.yml/badge.svg)](https://github.com/leonkoellerwirth-arch/kickoff-ai/actions/workflows/validate.yml)
 
----
+From a blank Mac to a working, verified AI development environment — guided by a local
+Control Room in your browser. One command to start, 42 checks to prove it, and a tool
+registry that reports its own drift. At the end, you don't read that it worked.
+You watch an agent do something on your machine.
 
-## The Problem
-
-Tools move. Homebrew formulas get deprecated. npm packages go unmaintained. The AI CLI you pinned six months ago is three major versions behind. And the setup repo that was exact on day one drifts silently until the next machine migration reveals the gap.
-
-Most setup repos have no answer for this. They are documentation, not systems.
-
----
-
-## What Makes This Different
-
-| Pillar | What it does | Numbers |
-|--------|-------------|---------|
-| **Staged installation** | One command, four cumulative levels: emergency shell in 15 min, full AI stack in 2 h | 12 modules, `--dry-run` on everything |
-| **Verification** | `doctor.sh` checks every layer of the stack after setup | 42 checks, PASS / WARN / FAIL |
-| **Currency system** | A registry of 102 tools is the single source of truth; CI opens a PR for version drift and an issue for rot every Monday | `candidate → active → deprecated → sunset`, 90-day sunset window |
-| **Migration** | `status-quo.sh` exports the old machine; `migration-diff` shows what the new one is still missing | Machine-readable `profile.json`, concrete commands for every gap |
-
-The hard rule behind the currency system: **nothing installs or retires itself**. The machine reports; the human decides.
+<!-- TODO: the Control Room screenshot goes here, and this comment goes away.
+     1. ./start.sh and open the Dashboard.
+     2. Rename local/manifests/tools.local.yaml first, so the Tools and Drift views show the
+        public registry only and no private candidates end up in the image.
+     3. Screenshot the window and save it as docs/img/control-room.png.
+     4. Replace this comment with a Markdown image reference to that file, captioned
+        "The Control Room — dashboard view".
+     The link checker scans comments too, so the path above is deliberately not written as a
+     Markdown link — a dead link here would fail the gate. -->
 
 ---
 
-## Quickstart
+## The principle
 
-On a brand-new machine — no Homebrew, no git, no repo:
+**The machine reports; the human decides.**
+
+Nothing in this repository installs, removes, or retires anything on its own. Every check is
+read-only. Every change is previewed before it runs, runs visibly in Terminal, and is verified
+after. The Control Room shows two badges and means them: `changes nothing` and
+`changes your Mac` — and the second one always waits for you.
+
+---
+
+## Three ways in
+
+**1 — See where you stand.** Changes nothing. Once the repo is on the machine:
+
+```bash
+./start.sh
+```
+
+This opens the Control Room at `127.0.0.1` — local only, nothing leaves the machine. It shows
+what's installed, what's missing for each level, what has drifted, and puts every command in
+this README behind a button with a plain-language explanation. It needs only `python3`.
+
+**2 — Set up a brand-new Mac.** No Homebrew, no git, no repo yet:
 
 ```bash
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/leonkoellerwirth-arch/kickoff-ai/main/prepare.sh)"
 ```
 
-`prepare.sh` checks readiness, installs Xcode CLT, clones the repo, and hands off to `bootstrap.sh --level 0`. You can stop there or continue:
+`prepare.sh` checks readiness, installs the Xcode Command Line Tools, clones the repo, and
+hands off to Level 0. To check readiness only, append `-- --check-only` — that run changes
+nothing. `curl | bash` is trust by definition; [SECURITY.md](SECURITY.md) explains the threat
+model and how to verify before running.
+
+**3 — Let an agent drive.** Install [Claude Desktop](https://claude.com/download), open
+Cowork, and say:
+
+> *Clone github.com/leonkoellerwirth-arch/kickoff-ai and set up my Mac with it.*
+
+The agent reads the [Operator Playbook](docs/12-OPERATOR-PLAYBOOK.md) and takes it from
+there — explaining each step in plain language, asking before anything that changes the
+machine, verifying after each level. You decide; it works.
+
+---
+
+## The problem this solves
+
+Tools move. Homebrew formulas get deprecated. npm packages go unmaintained. The AI CLI you
+pinned six months ago is three major versions behind. And the setup that was exact on day one
+drifts silently until the next machine migration reveals the gap.
+
+Most setup repositories have no answer for this. They are documentation, not systems.
+
+There is a second problem, newer and worse: every first contact with AI agents starts from
+zero. A capable person sits in front of a capable machine, and two weeks disappear into
+"getting the environment right" before anything visible happens. This repo compresses that
+into an afternoon — and ends it with proof, not a checklist.
+
+## What makes this different
+
+| Pillar | What it does | Numbers |
+| --- | --- | --- |
+| **Staged installation** | One command, four cumulative levels: emergency shell in 15 min, full AI stack in 2 h | 12 modules, `--dry-run` on everything |
+| **Verification** | `doctor.sh` checks every layer after setup — read-only, with a concrete fix per finding | 42 checks, PASS / WARN / FAIL |
+| **Currency system** | A registry is the single source of truth; CI opens a PR for version drift and an issue for rot every Monday | `candidate → active → deprecated → sunset`, 90-day window |
+| **Migration** | `status-quo.sh` exports the old machine; `migration-diff` shows what the new one is still missing | Machine-readable `profile.json`, concrete commands per gap |
+| **First Light** | The final guided step: an agent performs a small, real task in a fenced folder, in front of you | Under a minute; works offline via a local model |
+
+These counts are enforced, not remembered: a CI check recomputes them from the sources on
+every push and fails the build if this README disagrees. Drift detection applies to the
+documentation too.
+
+The pattern underneath — declared inventory, explicit lifecycle states, machine detection with
+human decision, read-only verification, traceable change — is described on its own in
+**[docs/11-GOVERNANCE-PATTERN.md](docs/11-GOVERNANCE-PATTERN.md)**. If you never run a single
+script here, that document is the part worth reading.
+
+## The four levels
 
 | Level | Time | After this level |
-|-------|------|-----------------|
+| --- | --- | --- |
 | 0 — Emergency | ~15 min | Clone repos, commit to git, run Claude Code, start pnpm projects |
 | 1 — Base | ~45 min | + Python via uv, VS Code with extensions, paved road (`base new`) |
 | 2 — Full | ~2 h | + Docker, full Xcode, Codex CLI, Gemini CLI, Ollama + local models |
 | 3 — Maximal | ~3 h+ | + optional Brewfile, automation layer with launchd jobs |
 
-Each level includes everything from the previous one. Running the same level twice is safe.
+Each level includes everything from the previous one. Re-running a completed level is safe —
+you cannot break this by running it twice. You do not have to pick the right level up front;
+the Guide in the Control Room walks each one as preview → run → verify.
 
-To check readiness before starting anything:
-
-```bash
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/leonkoellerwirth-arch/kickoff-ai/main/prepare.sh)" -- --check-only
-```
-
----
-
-## What the Output Looks Like
-
-```
-$ ./bootstrap.sh --list-levels
-
-┌─────────────────────────────────────────────────────────────────────┐
-│  kickoff-ai — Setup levels (./bootstrap.sh --level <N>)             │
-└─────────────────────────────────────────────────────────────────────┘
-
-Level Name          Duration   Modules
-─────────────────────────────────────────────────────────────────────
-0     Emergency     ~15 min    preflight, apple-toolchain (CLT), homebrew (core),
-                               shell, node, git-ssh, ai-stack (Claude Code only)
-
-1     Base          ~45 min    + full Brewfile, python (uv),
-                               macos-defaults, editors (VS Code), paved-road
-
-2     Full          ~2 h       + containers (Docker), apple-toolchain (Xcode),
-                               ai-stack (Codex, Gemini, Ollama + models)
-                               [= default run without --level]
-
-3     Maximum       ~3 h+      + Brewfile.optional (ML, security, media),
-                               automation/ (launchd jobs, if present)
-
-Note: Each level includes all modules from previous levels (cumulative).
-      Re-running a level that was already completed is safe.
-```
-
-After a full setup, `doctor.sh` runs 42 checks and prints a structured result. This is real output from the AI-tools section:
+After a full setup, `doctor.sh` prints a structured result. Real output from the AI-tools
+section:
 
 ```
 ==> AI Tools
-[PASS]  Claude Code                              2.1.227 (Claude Code)
+[PASS]  Claude Code                              2.1.231 (Claude Code)
 [PASS]  @openai/codex                            0.147.0
 [PASS]  Gemini CLI                               0.46.0
 [PASS]  Ollama                                   0.32.4
 [PASS]  Ollama models                            glm-ocr:latest,llama3.2:latest,deepseek-r1:14b,aya-expanse:8b
-
-...
-
-  PASS: 29
-  WARN: 10
-  FAIL: 2
-     Checked: 42 / 42
 ```
 
 WARN and FAIL entries each include a concrete fix command. FAILs block the setup as complete.
 
----
-
-## What's Inside
+## What's inside
 
 ```
+start.sh                Opens the Control Room — local app, changes nothing
 prepare.sh              Entry point for bare machines — no git or Homebrew needed
 bootstrap.sh            Orchestrator — runs modules in order, levels 0–3
-doctor.sh               Read-only check — 42 points, PASS/WARN/FAIL, exit 1 on FAIL
+doctor.sh               Read-only verification — 42 checks, exit 1 on FAIL
 status-quo.sh           Export the current machine state before migration
 
-scripts/
-  lib.sh                Logging, helpers, shared variables
-  00-preflight.sh       Arch, macOS version, disk space, sudo, Rosetta
-  01-apple-toolchain.sh CLT, Xcode, license, simulators
-  02-homebrew.sh        Homebrew + taps + brew bundle
-  03-shell.sh           oh-my-zsh, powerlevel10k, zsh plugins, dotfiles
-  04-node.sh            nvm + Node 24, pnpm/bun/deno, global npm packages
-  05-python.sh          uv as primary, Miniforge optional, pipx tools
-  06-containers.sh      Docker Desktop + Compose
-  07-ai-stack.sh        Claude Code, Codex, Gemini CLI, Ollama + models, MCP
-  08-git-ssh.sh         git config, ed25519 key, gh auth, signing, pre-commit
-  09-macos-defaults.sh  macOS developer settings
-  10-editors.sh         VS Code + extensions
-  11-paved-road.sh      ~/dev structure + clone dev/base
-  90-cleanup-legacy.sh  Opt-in: remove legacy installations (not in bootstrap.sh)
-
-manifests/
-  tools.yaml            Registry — 102 tools, the single source of truth
-  schema.md             Field definitions and allowed values
-
-automation/bin/         14 commands — all support --dry-run and --help
-  up2date               Check tools against upstream; report drift
-  sunset                State machine: propose / confirm / revive / adopt
-  migration-diff        Compare old-machine profile.json with current state
-  dev-up / dev-down / dev-ps   Docker stack lifecycle per project
-  mac-clean             Disk hygiene — dry-run by default, --apply to act
-  mac-update            Update all tool groups in a fixed sequence
-  mac-snapshot          Diff current machine state against repo declarations
-  repo-sweep            Audit ~/dev repos for drift, age, missing files
-  secret-sweep          gitleaks over all repos; find plain-text .env files
-  db-backup             mysqldump / pg_dump from running containers, with rotation
-  ollama-sync           Compare installed models to manifest; pull missing ones
-  env-run               Inject Vaultwarden secrets into process environment
-
-automation/launchd/     launchd job templates + install/uninstall scripts
-automation/manifests/   ollama-models.txt and other managed lists
-
-Brewfile                Declared core packages (full stack, level 2+)
-Brewfile.optional       Optional tools (nmap, sqlmap, ocrmypdf, …)
-Brewfile.level0         Minimal set for level 0
-Brewfile.level1         Base stack for level 1, derived from the registry
-
-templates/vaultwarden/  docker-compose.yml + .env.example for self-hosted secrets
-config/                 zshrc, zprofile, gitconfig, gitignore_global, vscode-extensions.txt
-local/                  Gitignored — machine-specific data, snapshots, private overrides
-
-docs/
-  00-ZERO-TO-HERO.md    Full setup guide phase by phase
-  01-MANUAL.md          Checklist: what stays manual and why
-  02-GAP-ANALYSIS.md    Honest audit: defects and what's missing
-  03-BASELINE.md        The reproduced stack as a measurable profile
-  04-DECISIONS.md       ADR-style rationale for tool choices
-  05-SANITIZATION.md    Rules for public publication
-  06-AUTOMATION.md      launchd jobs, automation layer
-  07-CURRENCY.md        The currency system in full detail
-  08-SECRETS.md         Secrets management: Vaultwarden + env-run
-  09-MIGRATION.md       Machine migration: export → prepare → diff
+app/                    The Control Room: dashboard, guide, registry, drift, migration
+scripts/                12 numbered modules, plus opt-in legacy cleanup and First Light
+manifests/tools.yaml    The public registry — curated reference, single source of truth
+local/                  Gitignored — machine-specific findings, snapshots, private overrides
+automation/bin/         14 commands — drift checks, sunset lifecycle, hygiene, backups
+docs/                   Zero-to-hero guide, decisions (ADR), governance pattern, playbooks
 ```
 
-The migration toolchain (`status-quo.sh` → `prepare.sh --profile` → `automation/bin/migration-diff`) is the part most setup repos skip. [docs/09-MIGRATION.md](docs/09-MIGRATION.md) covers it in detail.
+Machine-specific state never lives in the public registry: what a scan finds on *a* machine
+goes to `local/manifests/tools.local.yaml`, which is gitignored by design. The public manifest
+is a reference; your machine's state is yours. A CI guard keeps it that way.
 
----
+The migration toolchain (`status-quo.sh` → `profile.json` → `migration-diff`) is the part most
+setup repos skip. [docs/09-MIGRATION.md](docs/09-MIGRATION.md) covers it; secrets never travel
+in the profile.
 
-## The AI Stack
+## The AI stack
 
-The repo is built around an AI-heavy workflow. The stack is declared, not assumed:
+The stack is declared, not assumed:
 
 | Tool | Role |
-|------|------|
-| Claude Code | Primary coding agent (`claude-opus-5[1m]`), subagents on Sonnet for cost |
-| Codex CLI | OpenAI agent, `suggest` mode, MCP-connected |
-| Gemini CLI | Second opinion, shares the claude-mem memory system |
-| Ollama + local models | llama3.2, deepseek-r1:14b, glm-ocr, aya-expanse — native Metal, no Docker |
-| MCP | basic-memory, openaiDeveloperDocs, and project-specific servers |
+| --- | --- |
+| Claude Code | Primary coding agent, subagents on a smaller model for cost |
+| Codex CLI | Second agent, `suggest` mode, MCP-connected |
+| Gemini CLI | Second opinion, shared memory system |
+| Ollama + local models | Native Metal on Apple Silicon — no Docker, works offline |
+| MCP | basic-memory, developer-docs, project-specific servers |
 
-Ollama runs as a brew formula, not a container — Metal acceleration on Apple Silicon requires the native binary. Details in [docs/04-DECISIONS.md](docs/04-DECISIONS.md).
+Agent execution in this repo is fenced on purpose: First Light runs a fixed prompt in a fixed
+folder with no further access, and the Operator Playbook classifies every action as
+free / ask-first / never. Rationale in [docs/04-DECISIONS.md](docs/04-DECISIONS.md).
+
+## What this is not
+
+- **Not Nix.** No byte-level reproducibility guarantee. The currency system makes drift
+  visible; it does not eliminate it.
+- **Not a fleet tool.** No MDM, no multi-machine rollout. One person, one machine.
+- **Not cross-platform.** macOS on Apple Silicon only.
+- **Not tested across macOS versions.** Distilled from and verified on one machine running
+  macOS 26.5. `prepare.sh` accepts 15+ because that is the floor the scripts are written
+  against — treat anything else as untested.
+- **Not a conformity assessment.** The governance pattern is structurally analogous to
+  controls found in ISO/IEC 42001 and ISO/IEC 27001; it has not been audited against them,
+  and nothing here claims certification. Not a substitute for an audit.
+- **Not locked to this tool list.** The structure works as shipped; adapting
+  `manifests/tools.yaml`, the Brewfiles, and `config/` to your own stack is supported,
+  not required.
+
+## Who it's for
+
+**Someone starting out.** You have a Mac, you keep hearing about AI agents, and you do not
+want to spend two weeks assembling an environment from blog posts before anything visible
+happens. The Control Room decides the order, previews every change, verifies every result, and
+ends with an agent doing real work in front of you. You never have to guess.
+
+**Someone who reads it for the pattern.** You care less about this particular tool list and
+more about the question underneath: how do you keep an inventory of fast-moving components
+honest over time — declared, verified, lifecycle-managed, with drift reported to a human
+instead of silently absorbed? The background here is enterprise architecture and information
+security governance in regulated environments: audit trails over convenience, explicit
+decisions over automation. Start with
+[docs/11-GOVERNANCE-PATTERN.md](docs/11-GOVERNANCE-PATTERN.md); the setup is the working
+example.
+
+## Contributing · Security · License
+
+Contributions are usually registry changes, not code — see [CONTRIBUTING.md](CONTRIBUTING.md).
+The threat model, including how to verify before running anything, is in
+[SECURITY.md](SECURITY.md). MIT — see [LICENSE](LICENSE).
 
 ---
 
-## What This Is Not
-
-- **Not Nix.** There is no byte-level reproducibility guarantee. Two setups from the same repo at different points in time will differ by tool version drift, macOS delta updates, and Homebrew formula changes. The currency system makes that drift visible; it does not eliminate it.
-- **Not a fleet management tool.** No MDM integration, no multi-machine rollout, no central control plane. This is a single-developer setup for a single machine.
-- **Not cross-platform.** macOS on Apple Silicon only. The Intel path has not been maintained.
-
-- **Not tested across macOS versions.** It was distilled from, and verified on, exactly one machine running macOS 26.5. `prepare.sh` accepts macOS 15+ because that is the floor the scripts are written against — not because anyone has run this on 15, 16 or anything between. Treat any other version as untested.
-- **Not tested on multiple machines.** It is distilled from one real setup — 58 repositories, a verified inventory of the actual machine state, and a gap analysis that was deliberately unsympathetic. [docs/02-GAP-ANALYSIS.md](docs/02-GAP-ANALYSIS.md) shows what that means in practice.
-- **Not zero-config for your setup.** You will adapt `manifests/tools.yaml`, `Brewfile`, and `config/` to your stack. The structure is the value, not the exact tool list.
-
----
-
-## Who It's For
-
-A senior developer running a mixed stack — web frontends, Python services, iOS apps, AI agents — who wants a setup that is still *structurally* reproducible a year from now, with any drift made visible rather than silently absorbed. Not byte-identical: Homebrew and macOS move underneath you, and this repo reports that instead of pretending otherwise.
-
-The background is enterprise architecture in regulated environments (AI governance, BaFin/DORA context). That means: audit trails over convenience, explicit decisions over automation, and a strong preference for tools that do exactly what they say and nothing more.
-
-If that's your context, the design decisions in [docs/04-DECISIONS.md](docs/04-DECISIONS.md) will make sense immediately. If you want a one-click setup that makes choices for you, this is the wrong repo.
-
----
-
-## Contributing
-
-Contributions to this repo are usually registry changes, not code. See [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow and the rules that apply to scripts.
-
-## Security
-
-`curl | bash` is trust by definition. See [SECURITY.md](SECURITY.md) for the threat model, what's built in, and how to verify before running.
-
-## License
-
-MIT — see [LICENSE](LICENSE).
-
----
-
-A German-language version of the documentation is archived under [`docs/de/`](docs/de/) — English is authoritative; the German files are a frozen snapshot and are not kept in sync.
+A German-language snapshot of the documentation is archived under [`docs/de/`](docs/de) —
+English is authoritative.

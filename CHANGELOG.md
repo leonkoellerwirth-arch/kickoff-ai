@@ -14,7 +14,104 @@ Semantics for this repo:
 
 ## [Unreleased]
 
-_Nothing yet._
+### Added
+
+- **The Control Room — a local app.** `./start.sh` opens a dashboard, an ordered
+  step-by-step guide, the tool registry as a searchable table, the drift report,
+  the migration path and the repository's documents in the browser, all on
+  127.0.0.1. Built for the person who should not have to read a repository to set
+  up a Mac. See `docs/10-APP.md`.
+  - Standard-library Python and hand-written HTML/CSS/JS: no framework, no npm,
+    no build step. An app that guides you through installing Node cannot itself
+    need Node, so its only requirement is `python3` — which arrives with the
+    Xcode Command Line Tools that `prepare.sh` installs first.
+  - It never installs anything itself. Read-only commands stream into the page;
+    anything that changes the machine is handed to Terminal.app as a generated,
+    readable script, so the run owns a real TTY for the sudo prompt and the user
+    can watch it and stop it. INV-1 and INV-2 unchanged.
+  - The browser sends an action name, never a command line. Each name maps to a
+    fixed argument list, run without a shell; the only caller-supplied value is
+    the setup level, validated to 0–3. `90-cleanup-legacy.sh` and
+    `mac-clean --apply` have no button at all.
+  - Local-access guards mirroring the rest of the repo: 127.0.0.1 only, a
+    session token generated at startup, an Origin allow-list, a capped request
+    body, and one action at a time.
+- `scripts/checks/python-syntax.sh` — the Python equivalent of `bash -n`, wired
+  into the gate. Compiles in memory rather than via `py_compile`, because the
+  gate must not write `__pycache__` into the tree it is judging.
+- **First Light (`scripts/12-first-light.sh`)** — the last step of the guide and
+  the first one whose output is for the person rather than for the setup. It
+  creates `~/dev/first-light/` with two sample files, has Claude Code or the
+  smallest installed Ollama model read them and write a summary back, and opens
+  the folder. Runs in about ten seconds. The folder and the prompt are
+  hard-wired and the model is given no tools, no shell and no reach beyond the
+  two files — a first contact with an AI model should happen inside a fence that
+  can be read in one file.
+- **`manifests/counts.json`** — the repo's headline numbers, generated from the
+  sources by `scripts/checks/counts.sh --write`. The README, the docs and the
+  app read from it; the same script runs in the gate and fails when the prose
+  and the code disagree.
+- **`docs/11-GOVERNANCE-PATTERN.md`** — the pattern underneath the repo written
+  up on its own: declared inventory, lifecycle states, machine detection with
+  human decision, read-only verification, traceability. Includes a table naming
+  what is *not* claimed for each element. Nothing here has been audited.
+- `scripts/checks/registry-privacy.sh` — fails the gate when the public registry
+  starts describing one specific machine again.
+- **`docs/12-OPERATOR-PLAYBOOK.md`** — instructions for a general-purpose agent
+  asked to set up someone's Mac with this repository. It sorts every action into
+  three classes (run freely / announce and wait for a yes / never run), walks the
+  standard path, covers the deviations, and says what to report at the end. The
+  classes match the badges the Control Room shows a human — the same boundary,
+  drawn twice.
+- `CLAUDE.md` and `AGENTS.md` now open with a role switch: operator (using this
+  repo on a machine) or contributor (changing this repo). An agent has to know
+  which set of rules applies before it does anything, and the two were previously
+  not distinguished at all.
+
+### Fixed
+
+- **`--dry-run` no longer asks questions, and no longer aborts without a
+  terminal.** `confirm()` read from `/dev/tty` even during a preview, so a level-1
+  dry run stopped at module 08 with `/dev/tty: Device not configured` and never
+  showed modules 09 to 11. Anything without a terminal hit this: the Control
+  Room's own preview button, CI, and any agent driving the repo. A dry run now
+  answers its own questions (it is previewing something that will not happen),
+  and a missing terminal is treated as "no" with a clear message instead of a raw
+  bash error. `08-git-ssh.sh` and `11-paved-road.sh` had the same pattern outside
+  `confirm()` and were fixed the same way.
+- The Control Room no longer reports a preview as failed when `bootstrap.sh`
+  exits 2. Exit 2 means "modules ran, `doctor.sh` found something on the machine",
+  which during a preview is the preview working correctly.
+- The Control Room's "changes nothing" badge now reads "changes nothing on this
+  Mac", which is what it always meant — some of those actions do write a report
+  into `local/`.
+
+### Changed
+
+- **The tool registry is split.** `manifests/tools.yaml` is now a curated public
+  reference of 92 entries. Eleven entries that were raw inventory findings from
+  one machine ("Origin unclear — found in global npm packages") moved to
+  `local/manifests/tools.local.yaml`, which is gitignored. Four remaining
+  entries had personal decision notes rewritten as statements of fact. Every
+  reader — `up2date`, `sunset`, `migration-diff`, the Control Room — reads the
+  public file with the local one laid on top, so nothing is lost locally while
+  the published manifest stops being a report on somebody's laptop. Rationale in
+  `docs/07-CURRENCY.md`.
+- **The numbers agree now.** Three places claimed three different sizes for the
+  same repo (41/100, 42/102, 42/103). Counted: 42 doctor checks, 92 public
+  registry entries. README, `QUICKSTART.md`, `docs/00-ZERO-TO-HERO.md` and
+  `docs/01-MANUAL.md` corrected.
+- **`docs/02-GAP-ANALYSIS.md` → `docs/02-EXAMPLE-ASSESSMENT.md`**, rewritten as a
+  historical example report about an anonymous scanned system rather than a live
+  self-disclosure. Findings A.9, A.14, A.17 and B.1 abstracted further. Structure
+  and methodology unchanged; a stub remains at the old path.
+- **README reordered around what the repo now is:** a guided start line with a
+  verification underneath. The two entry paths lead, `./start.sh` first;
+  "Who It's For" addresses the person the Control Room was built for before the
+  reader who is here for the pattern. "What This Is Not" gained the conformity
+  disclaimers.
+- `scripts/checks/internal-briefing.sh` also refuses tracked work orders
+  (`*auftrag*`), which arrive in `docs/` the same way briefings do.
 
 ## [0.2.0] — 2026-08-11
 

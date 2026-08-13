@@ -51,6 +51,81 @@ The rules that must never quietly break. Each is checked by `scripts/gate.sh` or
 
 Newest first. Each: date · decision · why · (superseded by …).
 
+- **2026-08-13 — Two roles, decided in the first ten lines.** An agent arriving at this repo is
+  doing one of two jobs: using it to set up a machine, or changing the repo itself. The rules are
+  almost opposites — the first must never edit a file, the second must never touch a machine — and
+  until now nothing told them apart, so `CLAUDE.md` handed setup instructions to someone about to
+  install software. Both `CLAUDE.md` and `AGENTS.md` now open with the switch and route the
+  operator to `docs/12-OPERATOR-PLAYBOOK.md`.
+
+- **2026-08-13 — The playbook's three classes and the app's two badges are one boundary.**
+  `free / announce-and-wait / never` in the playbook must mean exactly what `changes nothing on
+  this Mac` and `changes your Mac` mean in the Control Room. When they disagree, the fix belongs
+  in whichever one is wrong, never in a note explaining the difference. And the honest limit is
+  stated in the governance document: a playbook is instructions, not a control. It raises the
+  floor; the destructive commands stay gated in the scripts themselves.
+
+- **2026-08-13 — A dry run answers its own questions.** `confirm()` prompted even under
+  `--dry-run`, which made the preview unusable anywhere without a terminal — the Control Room's
+  preview button, CI, and any agent. A preview asks about something that will not happen, so
+  there is nothing to consent to; it now assumes yes and shows the full path. Separately, a
+  missing `/dev/tty` is a "no" with an explanation, not a bash error. This was found by the
+  acceptance test in the operator work order, not by anyone using the feature.
+
+- **2026-08-13 — The public registry is a reference; the machine state is private.**
+  `manifests/tools.yaml` had become two things at once: a curated list of what this setup
+  installs, and the raw output of an inventory run on one laptop — "Origin unclear — found in
+  global npm packages", plus decision notes in the first person. Published and machine-readable,
+  that is a self-disclosure, not a reference. The registry now splits: the public file is
+  curated and impersonal, `local/manifests/tools.local.yaml` holds machine findings and personal
+  reasoning, and every reader lays the second over the first. `scripts/checks/registry-privacy.sh`
+  stops the mistake returning. Nothing is lost — it just stops being everyone's business.
+
+- **2026-08-13 — Headline numbers are generated, never typed.** Three places claimed three
+  different sizes for this repo, and each had been true on the day someone typed it. A repo
+  whose argument is "drift becomes visible" cannot let its own numbers drift quietly.
+  `manifests/counts.json` is generated from the sources; the gate recounts and fails when the
+  prose disagrees. The count for public claims deliberately excludes the local overlay — one
+  machine's extra entries must never move a published number.
+
+- **2026-08-13 — First Light is fenced harder than it needs to be.** The last guide step hands
+  an AI model two files this repo just created, inside a fixed folder, with a fixed prompt, and
+  no tools, no shell and no other access. The script writes the summary from the model's answer
+  rather than letting the model write anything itself. That is stricter than the task requires.
+  It is the shape someone should meet on their first contact with an agent, and the whole
+  arrangement has to be readable in one file — which is what makes it usable as the worked
+  example in `docs/11-GOVERNANCE-PATTERN.md`.
+
+- **2026-08-13 — The README leads with the product, not the disclaimer.** It used to open with
+  "a reference setup, not a starter kit" and address "a senior developer", above a repo whose
+  centre is a guided start for someone who is not one. The honest fix was not to soften the
+  limits but to put them where limits belong: the two entry paths lead, `./start.sh` first, and
+  "What This Is Not" grew rather than shrank — it now also says, in as many words, that nothing
+  here is a conformity assessment, a certification, or a substitute for an audit.
+
+- **2026-08-13 — The local app ships with no build step and no npm.** The other apps under
+  `dev/` are Vite + React and were the obvious thing to copy. They cannot work here: this app's
+  audience is a fresh Mac, and Node is something it installs rather than something it has. So
+  the architecture came from `local-agent-pipeline`'s audit console — stdlib-Python API,
+  localhost-only, token plus Origin guard, docs surfaced in-app — and the frontend was
+  hand-written as static HTML/CSS/JS instead. Cost: no component library, a small hand-rolled
+  markdown renderer, and CSS nobody else maintains. Bought: `git clone && ./start.sh` works on
+  a machine with nothing installed but the Command Line Tools.
+
+- **2026-08-13 — The app hands installs to Terminal instead of running them.** A browser-driven
+  installer has two problems the app cannot honestly solve: `sudo` needs a TTY, and a progress
+  bar in a web page hides what is happening to the machine. Read-only commands stream into the
+  page; anything that changes the machine is written to `local/app-runs/*.command` and opened in
+  Terminal.app, where the user sees the command, answers the password prompt and can Ctrl-C. This
+  is what keeps INV-1 and INV-2 true with a GUI in front of them — and it is why the app adds no
+  automation of its own. Everything else stays manual, deliberately.
+
+- **2026-08-13 — The app reads `tools.yaml` with a narrow reader, not a YAML library.** PyYAML
+  was removed from this repo on purpose and `yq` does not exist on a fresh Mac, so a ~30-line
+  reader for exactly this file's shape (a flat list, one scalar per line) is the honest option.
+  Shape drift is not this reader's problem to catch: `scripts/checks/registry-schema.sh` already
+  validates the registry with `yq` in the gate. Revisit if the registry ever grows nested values.
+
 - **2026-08-11 — Released as 0.2.0, not 1.0.0.** This repo's own MAJOR rule ("level boundaries
   changed") is met: level 1 stopped installing the full Brewfile. At `0.x` semver already
   permits a breaking change in a minor bump, and `1.0.0` would signal a stability promise
@@ -114,6 +189,14 @@ Newest first. Each: date · decision · why · (superseded by …).
 
 ## Open decisions
 
+- **The CLI contract only covers `scripts/[0-9]*.sh`.** The root entry points are not checked,
+  and they disagree: `start.sh` and `doctor.sh` exit 2 on an unknown option, while
+  `bootstrap.sh`, `prepare.sh` and `status-quo.sh` exit 1. One of the two is right for a user
+  who mistypes a flag. Decide which, then widen `scripts/checks/cli-contract.sh` to the root.
+- **The app's JavaScript has no linter.** `app/ui/app.js` is checked by nothing but the eye —
+  eslint would mean npm, which is exactly the dependency the app exists without. Either accept
+  it (it is small, and the server it talks to validates every input), or find a check that runs
+  without a package manager.
 - **Language of `docs/reviews/`.** The 2026-08-11 review is German while the repo language is
   English. Kept verbatim rather than translated, because rewording evidence quotes risks
   distorting them. Either translate it, move it under `docs/de/`, or record reviews as an

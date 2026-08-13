@@ -22,7 +22,11 @@ case "${1:-}" in
         ;;
 esac
 
-if match="$(git ls-files -- '*CLAUDE-CODE-BRIEFING*' '*BRIEFING*.md' 2>/dev/null)" \
+# 'Auftrag' is the German for a work order, and working orders arrive in this
+# repo the same way briefings do: written for the maintainer, full of
+# positioning and unpublished decisions, dropped into docs/ where a `git add -A`
+# would sweep them up. Same class, same rule.
+if match="$(git ls-files -- '*CLAUDE-CODE-BRIEFING*' '*BRIEFING*.md' '*auftrag*' '*AUFTRAG*' 2>/dev/null)" \
     && [ -n "$match" ]; then
     violation "internal briefing is tracked"
     printf '%s\n' "$match" >&2
