@@ -51,12 +51,15 @@ usage() { sed -n '2,17p' "${BASH_SOURCE[0]}"; }
 CHECKS="
 shell-syntax.sh
 shellcheck.sh
+python-syntax.sh
 plists.sh
 yaml-parse.sh
 workflow-run-blocks.sh
 workflow-trust.sh
 registry-schema.sh
 registry-consistency.sh
+registry-privacy.sh
+counts.sh
 currency-contract.sh
 cli-contract.sh
 gitconfig-isolation.sh

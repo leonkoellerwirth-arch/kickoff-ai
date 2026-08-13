@@ -1,5 +1,21 @@
 # Quickstart — Up and running, level by level
 
+## If you would rather not type commands
+
+Once the repo is on the machine:
+
+```bash
+./start.sh
+```
+
+That opens the Control Room in your browser: what is installed, what to do next in order, and
+every command this page describes behind a button. It needs only `python3`, which comes with
+the Xcode Command Line Tools. See [docs/10-APP.md](docs/10-APP.md).
+
+The rest of this page is the same path on the command line.
+
+---
+
 ## Brand-new machine (no Homebrew, no git, no repo)
 
 ```bash
@@ -124,7 +140,7 @@ bw status                          # Vaultwarden connected
 **Verify:**
 ```bash
 ./doctor.sh
-# All 41 checks: PASS or WARN, no FAIL
+# All 42 checks: PASS or WARN, no FAIL
 ```
 
 ---

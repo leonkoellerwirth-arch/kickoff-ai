@@ -194,4 +194,4 @@ cd ~/dev/kickoff-ai
 ./doctor.sh
 ```
 
-Target: all ~40 checks at PASS or WARN, no FAIL.
+Target: all 42 checks at PASS or WARN, no FAIL.

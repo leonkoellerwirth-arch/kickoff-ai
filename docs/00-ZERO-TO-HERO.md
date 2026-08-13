@@ -684,7 +684,7 @@ dev/base/
 
 ```bash
 # 1 — Check setup state
-./doctor.sh   # in ~/dev/kickoff-ai: ~40 checks, all PASS or WARN
+./doctor.sh   # in ~/dev/kickoff-ai: 42 checks, all PASS or WARN
 
 # 2 — Scaffold a new project
 cd ~/dev
