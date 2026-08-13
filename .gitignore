@@ -30,6 +30,10 @@ local/*
 .Trashes
 Icon?
 
+# Python bytecode (the app is stdlib Python; running it leaves caches behind)
+__pycache__/
+*.pyc
+
 # Editor temp files
 *.swp
 *.swo

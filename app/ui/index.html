@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>kickoff-ai — Control Room</title>
+    <link rel="stylesheet" href="/ui/app.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <nav class="sidebar">
+        <div class="brand">
+          <span class="brand-mark">kickoff-ai</span>
+          <span class="brand-sub">Control Room</span>
+        </div>
+
+        <button class="nav-item" data-view="dashboard">
+          <span class="nav-label">Dashboard</span>
+          <span class="nav-hint">Where this Mac stands</span>
+        </button>
+        <button class="nav-item" data-view="guide">
+          <span class="nav-label">Guide</span>
+          <span class="nav-hint">Step by step, in order</span>
+        </button>
+        <button class="nav-item" data-view="registry">
+          <span class="nav-label">Tools</span>
+          <span class="nav-hint">Everything this setup installs</span>
+        </button>
+        <button class="nav-item" data-view="currency">
+          <span class="nav-label">Drift</span>
+          <span class="nav-hint">What has gone out of date</span>
+        </button>
+        <button class="nav-item" data-view="migration">
+          <span class="nav-label">Migration</span>
+          <span class="nav-hint">Old Mac to new Mac</span>
+        </button>
+        <button class="nav-item" data-view="docs">
+          <span class="nav-label">Docs</span>
+          <span class="nav-hint">The manual, in here</span>
+        </button>
+
+        <div class="sidebar-foot">
+          <div id="foot-version">—</div>
+          <div class="muted">Local only · 127.0.0.1</div>
+        </div>
+      </nav>
+
+      <main class="main">
+        <div id="view" class="view"></div>
+      </main>
+
+      <aside class="console" id="console" hidden>
+        <div class="console-head">
+          <div>
+            <div class="console-title" id="console-title">Output</div>
+            <div class="console-cmd" id="console-cmd"></div>
+          </div>
+          <div class="console-actions">
+            <span class="badge" id="console-state">running</span>
+            <button class="btn btn-quiet" id="console-stop">Stop</button>
+            <button class="btn btn-quiet" id="console-close">Close</button>
+          </div>
+        </div>
+        <pre class="console-body" id="console-body"></pre>
+      </aside>
+    </div>
+
+    <div class="modal-backdrop" id="modal" hidden>
+      <div class="modal">
+        <h2 id="modal-title">Are you sure?</h2>
+        <p id="modal-body"></p>
+        <div class="modal-cmd" id="modal-cmd"></div>
+        <div class="modal-actions">
+          <button class="btn btn-quiet" id="modal-cancel">Cancel</button>
+          <button class="btn btn-danger" id="modal-confirm">Yes, run it</button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      window.API_TOKEN = "__API_TOKEN__";
+    </script>
+    <script src="/ui/app.js"></script>
+  </body>
+</html>
